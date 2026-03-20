@@ -34,6 +34,7 @@ class Routes(
 
   private object CodeQueryParamMatcher extends QueryParamDecoderMatcher[String]("code")
   private object SearchQueryParamMatcher extends QueryParamDecoderMatcher[String]("query")
+  private object AfterQueryParamMatcher extends OptionalQueryParamDecoderMatcher[String]("after")
 
   def authRoutes: HttpRoutes[IO] = HttpRoutes.of[IO] {
     case GET -> Root / "auth" / "callback" :? CodeQueryParamMatcher(code) =>
@@ -106,10 +107,12 @@ class Routes(
           db.unfollow(data.user.id, categoryId) *> Ok("Unfollowed")
         case None => Forbidden("Not logged in")
       }
-    case req @ GET -> Root / "search" / "categories" :? SearchQueryParamMatcher(query) =>
+    case req @ GET -> Root / "search" / "categories" :? SearchQueryParamMatcher(query) +& AfterQueryParamMatcher(after) =>
       getSession(req).flatMap {
         case Some(data) =>
-          val uri = uri"https://api.twitch.tv/helix/search/categories".withQueryParam("query", query)
+          val uri = uri"https://api.twitch.tv/helix/search/categories"
+            .withQueryParam("query", query)
+            .withOptionQueryParam("after", after)
           val searchReq = Request[IO](method = Method.GET, uri = uri).putHeaders(
             Authorization(Credentials.Token(AuthScheme.Bearer, data.accessToken)),
             Header.Raw(ci"Client-Id", clientId)

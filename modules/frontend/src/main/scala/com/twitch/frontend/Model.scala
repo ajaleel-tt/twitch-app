@@ -9,7 +9,10 @@ case class Model(
     searchQuery: String,
     searchResults: List[TwitchCategory],
     selectedCategoryIds: Set[String],
-    followedCategories: List[TwitchCategory]
+    followedCategories: List[TwitchCategory],
+    paginationCursor: Option[String],
+    currentPage: Int,
+    pageSize: Int
 )
 
 object Model:
@@ -21,5 +24,8 @@ object Model:
       searchQuery = "",
       searchResults = Nil,
       selectedCategoryIds = Set.empty,
-      followedCategories = Nil
+      followedCategories = Nil,
+      paginationCursor = None,
+      currentPage = 0,
+      pageSize = 5
     )

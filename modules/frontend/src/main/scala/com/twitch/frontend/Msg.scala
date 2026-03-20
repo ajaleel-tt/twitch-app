@@ -12,7 +12,9 @@ enum Msg:
   case Logout
   case UpdateSearchQuery(query: String)
   case SearchCategories
-  case GotSearchResults(results: List[TwitchCategory])
+  case GotSearchResults(results: List[TwitchCategory], cursor: Option[String])
+  case SetPage(page: Int)
+  case FetchMore
   case ToggleCategorySelection(id: String)
   case FollowCategory(category: TwitchCategory)
   case UnfollowCategory(id: String)
@@ -49,7 +51,7 @@ object Msg:
       response.status match
         case Status(code, _) if code >= 200 && code < 300 =>
           decode[TwitchSearchCategoriesResponse](response.body) match
-            case Right(res) => Msg.GotSearchResults(res.data)
+            case Right(res) => Msg.GotSearchResults(res.data, res.pagination.flatMap(_.cursor))
             case Left(err)  => Msg.ApiError(s"Search decoding error: ${err.getMessage}")
         case Status(code, msg) =>
           Msg.ApiError(s"Search failed with $code: $msg"),

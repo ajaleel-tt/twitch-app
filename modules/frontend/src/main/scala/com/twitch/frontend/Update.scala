@@ -27,9 +27,16 @@ object Update:
       (model.copy(searchQuery = q), Cmd.None)
     case Msg.SearchCategories =>
       if (model.searchQuery.trim.isEmpty) (model, Cmd.None)
-      else (model.copy(status = Some("Searching...")), Http.send(Request.get(s"/api/search/categories?query=${model.searchQuery}"), Msg.fromSearchResponse))
-    case Msg.GotSearchResults(results) =>
-      (model.copy(searchResults = results, status = None), Cmd.None)
+      else (model.copy(status = Some("Searching..."), searchResults = Nil, paginationCursor = None, currentPage = 0), Http.send(Request.get(s"/api/search/categories?query=${model.searchQuery}"), Msg.fromSearchResponse))
+    case Msg.GotSearchResults(results, cursor) =>
+      (model.copy(searchResults = model.searchResults ++ results, paginationCursor = cursor, status = None), Cmd.None)
+    case Msg.SetPage(page) =>
+      (model.copy(currentPage = page), Cmd.None)
+    case Msg.FetchMore =>
+      model.paginationCursor match
+        case Some(cursor) =>
+          (model.copy(status = Some("Fetching more...")), Http.send(Request.get(s"/api/search/categories?query=${model.searchQuery}&after=$cursor"), Msg.fromSearchResponse))
+        case None => (model, Cmd.None)
     case Msg.ToggleCategorySelection(id) =>
       val newSelection = 
         if (model.selectedCategoryIds.contains(id)) model.selectedCategoryIds - id

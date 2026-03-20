@@ -27,8 +27,13 @@ case class TwitchCategory(
     box_art_url: String
 ) derives Codec.AsObject
 
+case class TwitchPagination(
+    cursor: Option[String]
+) derives Codec.AsObject
+
 case class TwitchSearchCategoriesResponse(
-    data: List[TwitchCategory]
+    data: List[TwitchCategory],
+    pagination: Option[TwitchPagination]
 ) derives Codec.AsObject
 
 case class AppConfig(
