@@ -34,7 +34,9 @@ lazy val frontend = project.in(file("modules/frontend"))
     scalaJSUseMainModuleInitializer := true,
     Compile / mainClass := Some("com.twitch.frontend.Main"),
     libraryDependencies ++= Seq(
-      "io.indigoengine" %%% "tyrian" % "0.11.0"
+      "com.armanbilge" %%% "calico"     % "0.2.3",
+      "org.http4s"     %%% "http4s-dom" % "0.2.11",
+      "org.http4s"     %%% "http4s-circe" % "0.23.30"
     )
   )
 
