@@ -110,7 +110,9 @@ object SearchSection:
   private def categoryCard(state: SignallingRef[IO, Model], model: Model, cat: TwitchCategory): Resource[IO, HtmlDivElement[IO]] =
     val isSelected = model.selectedCategoryIds.contains(cat.id)
     val isFollowed = model.followedCategories.exists(_.id == cat.id)
-    val boxArtUrl = cat.box_art_url.replace("{width}", "140").replace("{height}", "185")
+    val boxArtUrl = cat.box_art_url
+      .replace("{width}", "280").replace("{height}", "370")
+      .replaceAll("""-(\d+)x(\d+)\.""", "-280x370.")
     div(
       styleAttr := s"margin: 10px; padding: 10px; border: ${if isSelected then "2px solid #9146ff" else "1px solid #ddd"}; border-radius: 8px; width: 160px; background: ${if isSelected then "#f0e6ff" else "white"}; display: flex; flex-direction: column; align-items: center;",
       div(

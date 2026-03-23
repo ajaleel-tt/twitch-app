@@ -24,7 +24,9 @@ object FollowedSection:
     )
 
   private def followedCategoryCard(state: SignallingRef[IO, Model], cat: TwitchCategory): Resource[IO, HtmlDivElement[IO]] =
-    val boxArtUrl = cat.box_art_url.replace("{width}", "70").replace("{height}", "92")
+    val boxArtUrl = cat.box_art_url
+      .replace("{width}", "140").replace("{height}", "184")
+      .replaceAll("""-(\d+)x(\d+)\.""", "-140x184.")
     div(
       styleAttr := "margin: 10px; padding: 10px; border: 1px solid #ddd; border-radius: 8px; width: 120px; background: white; display: flex; flex-direction: column; align-items: center;",
       img(src := boxArtUrl, styleAttr := "width: 70px; height: 92px; border-radius: 4px;"),
