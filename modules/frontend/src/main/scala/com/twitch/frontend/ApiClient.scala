@@ -1,0 +1,53 @@
+package com.twitch.frontend
+
+import cats.effect.*
+import io.circe.parser.decode
+import io.circe.syntax.*
+import org.http4s.dom.FetchClientBuilder
+import org.http4s.{Request as Http4sRequest, Method, Uri, MediaType}
+import org.http4s.headers.`Content-Type`
+import com.twitch.core.*
+
+object ApiClient:
+
+  private val httpClient = FetchClientBuilder[IO].create
+
+  def fetchUser: IO[Option[TwitchUser]] =
+    httpClient.expect[String](Uri.unsafeFromString("/api/user")).attempt.map {
+      case Right(body) => decode[TwitchUser](body).toOption
+      case Left(_)     => None
+    }
+
+  def fetchConfig: IO[Option[AppConfig]] =
+    httpClient.expect[String](Uri.unsafeFromString("/api/config")).attempt.map {
+      case Right(body) => decode[AppConfig](body).toOption
+      case Left(_)     => None
+    }
+
+  def fetchFollowed: IO[List[TwitchCategory]] =
+    httpClient.expect[String](Uri.unsafeFromString("/api/followed")).attempt.map {
+      case Right(body) => decode[FollowedCategoriesResponse](body).map(_.categories).getOrElse(Nil)
+      case Left(_)     => Nil
+    }
+
+  def searchCategories(query: String, after: Option[String] = None): IO[Option[TwitchSearchCategoriesResponse]] =
+    val baseUri = Uri.unsafeFromString("/api/search/categories").withQueryParam("query", query)
+    val uri = after.fold(baseUri)(c => baseUri.withQueryParam("after", c))
+    httpClient.expect[String](uri).attempt.map {
+      case Right(body) => decode[TwitchSearchCategoriesResponse](body).toOption
+      case Left(_)     => None
+    }
+
+  def postFollow(cat: TwitchCategory): IO[Boolean] =
+    val req = Http4sRequest[IO](Method.POST, Uri.unsafeFromString("/api/follow"))
+      .withEntity(FollowRequest(cat).asJson.noSpaces)
+      .withContentType(`Content-Type`(MediaType.application.json))
+    httpClient.successful(req)
+
+  def postUnfollow(id: String): IO[Boolean] =
+    val req = Http4sRequest[IO](Method.POST, Uri.unsafeFromString(s"/api/unfollow/$id"))
+    httpClient.successful(req)
+
+  def postLogout: IO[Unit] =
+    val req = Http4sRequest[IO](Method.POST, Uri.unsafeFromString("/api/logout"))
+    httpClient.expect[String](req).void.handleError(_ => ())
