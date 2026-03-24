@@ -12,5 +12,6 @@ case class Model(
     followedCategories: List[TwitchCategory] = Nil,
     paginationCursor: Option[String] = None,
     currentPage: Int = 0,
-    pageSize: Int = 5
+    pageSize: Int = 5,
+    notifications: List[StreamNotification] = Nil
 )

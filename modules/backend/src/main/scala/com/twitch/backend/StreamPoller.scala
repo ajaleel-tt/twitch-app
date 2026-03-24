@@ -1,0 +1,147 @@
+package com.twitch.backend
+
+import cats.effect.*
+import cats.effect.std.Queue
+import cats.syntax.all.*
+import org.http4s.*
+import org.http4s.client.Client
+import org.http4s.circe.CirceEntityDecoder.*
+import org.http4s.headers.Authorization
+import org.http4s.implicits.*
+import org.typelevel.ci.*
+import scala.concurrent.duration.*
+import java.time.Instant
+import com.twitch.core.*
+
+class StreamPoller(
+    clientId: String,
+    clientSecret: String,
+    client: Client[IO],
+    db: Database,
+    notificationQueues: Ref[IO, Map[String, (String, Queue[IO, StreamNotification])]],
+    appToken: Ref[IO, Option[String]],
+    notifiedStreamIds: Ref[IO, Set[String]]
+):
+
+  private def fetchAppToken: IO[String] =
+    val req = Request[IO](method = Method.POST, uri = uri"https://id.twitch.tv/oauth2/token").withEntity(
+      UrlForm(
+        "client_id" -> clientId,
+        "client_secret" -> clientSecret,
+        "grant_type" -> "client_credentials"
+      )
+    )
+    client.run(req).use { resp =>
+      if resp.status.isSuccess then
+        resp.as[TwitchTokenResponse].map(_.access_token)
+      else
+        resp.bodyText.compile.string.flatMap { body =>
+          IO.raiseError(new RuntimeException(s"Failed to get app token: ${resp.status} $body"))
+        }
+    }
+
+  private def getOrRefreshToken: IO[String] =
+    appToken.get.flatMap {
+      case Some(t) => IO.pure(t)
+      case None    => fetchAppToken.flatTap(t => appToken.set(Some(t)))
+    }
+
+  private def withTokenRefresh[A](f: String => IO[A]): IO[A] =
+    getOrRefreshToken.flatMap(f).handleErrorWith { err =>
+      appToken.set(None) *> getOrRefreshToken.flatMap(f)
+    }
+
+  private val maxPagesPerCategory = 3
+
+  private def fetchStreamsPage(token: String, categoryId: String, cursor: Option[String]): IO[TwitchStreamsResponse] =
+    val baseUri = uri"https://api.twitch.tv/helix/streams"
+      .withQueryParam("game_id", categoryId)
+      .withQueryParam("first", "100")
+    val uriWithCursor = cursor.fold(baseUri)(c => baseUri.withQueryParam("after", c))
+    val req = Request[IO](method = Method.GET, uri = uriWithCursor).putHeaders(
+      Authorization(Credentials.Token(AuthScheme.Bearer, token)),
+      Header.Raw(ci"Client-Id", clientId)
+    )
+    client.expect[TwitchStreamsResponse](req)
+
+  private def fetchLiveStreams(token: String, categoryIds: List[String]): IO[List[TwitchStream]] =
+    categoryIds.flatTraverse { categoryId =>
+      def go(page: Int, cursor: Option[String], acc: List[TwitchStream]): IO[List[TwitchStream]] =
+        if page >= maxPagesPerCategory then IO.pure(acc)
+        else
+          fetchStreamsPage(token, categoryId, cursor).flatMap { resp =>
+            val newAcc = acc ++ resp.data
+            resp.pagination.flatMap(_.cursor) match
+              case Some(next) if resp.data.nonEmpty => go(page + 1, Some(next), newAcc)
+              case _ => IO.pure(newAcc)
+          }
+      go(0, None, Nil)
+    }
+
+  private def toNotification(s: TwitchStream): StreamNotification =
+    StreamNotification(
+      categoryId = s.game_id,
+      categoryName = s.game_name,
+      streamerId = s.user_id,
+      streamerLogin = s.user_login,
+      streamerName = s.user_name,
+      streamTitle = s.title,
+      viewerCount = s.viewer_count,
+      thumbnailUrl = s.thumbnail_url.replace("{width}", "320").replace("{height}", "180")
+    )
+
+  private def broadcastNotifications(notifications: List[StreamNotification]): IO[Unit] =
+    for
+      queues <- notificationQueues.get
+      userIds = queues.values.map(_._1).toSet
+      followedByUser <- userIds.toList.traverse(uid => db.getFollowed(uid).map(cats => uid -> cats.map(_.id).toSet))
+      followedMap = followedByUser.toMap
+      _ <- queues.values.toList.traverse_ { case (userId, queue) =>
+        val userCategoryIds = followedMap.getOrElse(userId, Set.empty)
+        val relevantNotifications = notifications.filter(n => userCategoryIds.contains(n.categoryId))
+        relevantNotifications.traverse_(queue.offer)
+      }
+    yield ()
+
+  private def recentlyWentLive(s: TwitchStream, now: Instant): Boolean =
+    s.`type` == "live" && {
+      val startedAt = Instant.parse(s.started_at)
+      java.time.Duration.between(startedAt, now).toMinutes < 5
+    }
+
+  private def pollOnce: IO[Unit] =
+    for
+      allCategories <- db.getAllFollowedCategories
+      _ <- IO.whenA(allCategories.nonEmpty) {
+        for
+          streams <- withTokenRefresh(token => fetchLiveStreams(token, allCategories.map(_.id)))
+          now <- IO(Instant.now())
+          recentStreams = streams.filter(recentlyWentLive(_, now))
+          alreadyNotified <- notifiedStreamIds.get
+          newStreams = recentStreams.filter(s => !alreadyNotified.contains(s.id))
+          _ <- notifiedStreamIds.set(recentStreams.map(_.id).toSet)
+          _ <- IO.whenA(newStreams.nonEmpty) {
+            IO.println(s"Poller: found ${newStreams.size} streams that just went live") *>
+              broadcastNotifications(newStreams.map(toNotification))
+          }
+        yield ()
+      }
+    yield ()
+
+  def start: IO[Nothing] =
+    IO.println("StreamPoller: starting (polling every 60s)") *>
+      pollOnce.handleErrorWith(e => IO.println(s"StreamPoller error: $e")) *>
+      (IO.sleep(60.seconds) *> pollOnce.handleErrorWith(e => IO.println(s"StreamPoller error: $e"))).foreverM
+
+object StreamPoller:
+  def make(
+      clientId: String,
+      clientSecret: String,
+      client: Client[IO],
+      db: Database,
+      notificationQueues: Ref[IO, Map[String, (String, Queue[IO, StreamNotification])]]
+  ): IO[StreamPoller] =
+    for
+      tokenRef <- IO.ref(Option.empty[String])
+      notifiedRef <- IO.ref(Set.empty[String])
+    yield new StreamPoller(clientId, clientSecret, client, db, notificationQueues, tokenRef, notifiedRef)

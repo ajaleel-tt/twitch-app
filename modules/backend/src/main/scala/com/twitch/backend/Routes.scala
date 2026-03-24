@@ -11,6 +11,8 @@ import org.http4s.implicits.*
 import org.http4s.headers.{Authorization, Location}
 import org.typelevel.ci.*
 import java.util.UUID
+import cats.effect.std.Queue
+import io.circe.syntax.*
 import com.twitch.core.*
 
 case class SessionData(
@@ -24,7 +26,8 @@ class Routes(
     redirectUri: String,
     client: Client[IO],
     userSession: Ref[IO, Map[String, SessionData]],
-    db: Database
+    db: Database,
+    notificationQueues: Ref[IO, Map[String, (String, Queue[IO, StreamNotification])]]
 ):
 
   private def getSession(req: Request[IO]): IO[Option[SessionData]] = {
@@ -126,4 +129,21 @@ class Routes(
         _ <- sessionId.fold(IO.unit)(id => userSession.update(_ - id))
         res <- Ok("Logged out").map(_.removeCookie("session_id"))
       } yield res
+    case req @ GET -> Root / "notifications" / "stream" =>
+      getSession(req).flatMap {
+        case None => Forbidden("Not logged in")
+        case Some(data) =>
+          val sessionId = req.cookies.find(_.name == "session_id").map(_.content).getOrElse("unknown")
+          Queue.unbounded[IO, StreamNotification].flatMap { queue =>
+            notificationQueues.update(_ + (sessionId -> (data.user.id, queue))) *> {
+              val eventStream: fs2.Stream[IO, ServerSentEvent] =
+                fs2.Stream.fromQueueUnterminated(queue)
+                  .map { n =>
+                    ServerSentEvent(data = Some(n.asJson.noSpaces), eventType = Some("stream-live"))
+                  }
+                  .onFinalize(notificationQueues.update(_ - sessionId))
+              Ok(eventStream)
+            }
+          }
+      }
   }

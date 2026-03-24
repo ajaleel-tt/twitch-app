@@ -1,11 +1,13 @@
 package com.twitch.frontend
 
 import cats.effect.*
+import cats.effect.unsafe.implicits.global
 import io.circe.parser.decode
 import io.circe.syntax.*
 import org.http4s.dom.FetchClientBuilder
 import org.http4s.{Request as Http4sRequest, Method, Uri, MediaType}
 import org.http4s.headers.`Content-Type`
+import org.scalajs.dom
 import com.twitch.core.*
 
 object ApiClient:
@@ -51,3 +53,19 @@ object ApiClient:
   def postLogout: IO[Unit] =
     val req = Http4sRequest[IO](Method.POST, Uri.unsafeFromString("/api/logout"))
     httpClient.expect[String](req).void.handleError(_ => ())
+
+  def streamNotifications(onNotification: StreamNotification => IO[Unit]): IO[Nothing] =
+    IO.async[Nothing] { cb =>
+      IO {
+        val es = new dom.EventSource("/api/notifications/stream")
+        es.addEventListener("stream-live", (e: dom.MessageEvent) => {
+          decode[StreamNotification](e.data.asInstanceOf[String]).foreach { n =>
+            onNotification(n).unsafeRunAndForget()
+          }
+        })
+        es.onerror = (_: dom.Event) => {
+          cb(Left(new RuntimeException("SSE connection error")))
+        }
+        Some(IO(es.close()))
+      }
+    }
