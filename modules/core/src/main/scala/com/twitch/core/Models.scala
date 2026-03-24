@@ -43,3 +43,33 @@ case class AppConfig(
 case class FollowRequest(category: TwitchCategory) derives Codec.AsObject
 
 case class FollowedCategoriesResponse(categories: List[TwitchCategory]) derives Codec.AsObject
+
+case class TwitchStream(
+    id: String,
+    user_id: String,
+    user_login: String,
+    user_name: String,
+    game_id: String,
+    game_name: String,
+    `type`: String,
+    title: String,
+    viewer_count: Int,
+    started_at: String,
+    thumbnail_url: String
+) derives Codec.AsObject
+
+case class TwitchStreamsResponse(
+    data: List[TwitchStream],
+    pagination: Option[TwitchPagination]
+) derives Codec.AsObject
+
+case class StreamNotification(
+    categoryId: String,
+    categoryName: String,
+    streamerId: String,
+    streamerLogin: String,
+    streamerName: String,
+    streamTitle: String,
+    viewerCount: Int,
+    thumbnailUrl: String
+) derives Codec.AsObject

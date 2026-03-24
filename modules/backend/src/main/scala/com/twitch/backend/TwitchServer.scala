@@ -1,6 +1,7 @@
 package com.twitch.backend
 
 import cats.effect.*
+import cats.syntax.all.*
 import com.comcast.ip4s.*
 import org.http4s.*
 import org.http4s.dsl.io.*
@@ -10,6 +11,8 @@ import org.http4s.server.Router
 import org.http4s.server.middleware.CORS
 import org.http4s.server.staticcontent.*
 import doobie.h2.H2Transactor
+import cats.effect.std.Queue
+import com.twitch.core.StreamNotification
 
 object TwitchServer extends IOApp.Simple:
 
@@ -35,11 +38,12 @@ object TwitchServer extends IOApp.Simple:
       for {
         _ <- db.initDb
         userSession <- IO.ref[Map[String, SessionData]](Map.empty)
+        notificationQueues <- IO.ref(Map.empty[String, (String, Queue[IO, StreamNotification])])
         _ <- EmberClientBuilder.default[IO].build.use { client =>
           val host = host"0.0.0.0"
           val port = port"8080"
 
-          val routes = new Routes(clientId, clientSecret, redirectUri, client, userSession, db)
+          val routes = new Routes(clientId, clientSecret, redirectUri, client, userSession, db, notificationQueues)
           val frontendService = fileService[IO](FileService.Config("./modules/frontend"))
 
           val httpApp = Router(
@@ -54,14 +58,20 @@ object TwitchServer extends IOApp.Simple:
 
           val corsApp = CORS.policy.withAllowOriginAll(httpApp)
 
-          IO.println(s"Server started at http://localhost:$port") *>
-            EmberServerBuilder
-              .default[IO]
-              .withHost(host)
-              .withPort(port)
-              .withHttpApp(corsApp)
-              .build
-              .useForever
+          for
+            poller <- StreamPoller.make(clientId, clientSecret, client, db, notificationQueues)
+            _ <- (
+              poller.start.void,
+              IO.println(s"Server started at http://localhost:$port") *>
+                EmberServerBuilder
+                  .default[IO]
+                  .withHost(host)
+                  .withPort(port)
+                  .withHttpApp(corsApp)
+                  .build
+                  .useForever
+            ).parTupled
+          yield ()
         }
       } yield ()
     }
