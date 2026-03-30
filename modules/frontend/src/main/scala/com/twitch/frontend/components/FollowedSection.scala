@@ -35,10 +35,10 @@ object FollowedSection:
         styleAttr := "background: #ff4646; font-size: 0.7rem; padding: 2px 5px;",
         "Unfollow",
         onClick --> { _.foreach(_ =>
-          state.update(_.copy(status = Some("Unfollowing..."))) *>
+          (state.update(_.copy(status = Some("Unfollowing..."))) *>
             ApiClient.postUnfollow(cat.id).flatMap(_ =>
               ApiClient.fetchFollowed.flatMap(cats => state.update(_.copy(followedCategories = cats, status = None)))
-            )
+            )).start.void
         )}
       )
     )
