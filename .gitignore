@@ -48,6 +48,9 @@ build/
 node_modules/
 modules/frontend/dist/
 
+### Generated ###
+modules/frontend/src/main/scala/com/twitch/frontend/scalawind.scala
+
 ### Scala ###
 .bsp/
 
