@@ -12,17 +12,18 @@ object SearchSection:
 
   def searchInput(state: SignallingRef[IO, Model]): Resource[IO, HtmlDivElement[IO]] =
     div(
-      styleAttr := "display: flex; gap: 10px; justify-content: center; margin-bottom: 20px;",
+      cls := "flex gap-3 justify-center mb-6",
       input.withSelf { self =>
         (
           typ := "text",
           placeholder := "Search for a category...",
-          styleAttr := "padding: 0.5rem; border: 1px solid #ddd; border-radius: 4px; width: 250px;",
+          cls := "bg-twitch-dark-card border border-gray-700 text-white placeholder-gray-500 rounded-lg px-4 py-3 w-80 focus:outline-none focus:ring-2 focus:ring-twitch-purple focus:border-transparent transition-all",
           value <-- state.map(_.searchQuery),
           onInput --> { _.foreach(_ => self.value.get.flatMap(q => state.update(_.copy(searchQuery = q)))) }
         )
       },
       button(
+        cls := "bg-twitch-purple hover:bg-twitch-purple-dark text-white font-medium px-6 py-3 rounded-lg transition-colors cursor-pointer",
         "Search",
         onClick --> { _.foreach { _ =>
           state.get.flatMap { m =>
@@ -46,7 +47,7 @@ object SearchSection:
 
   def searchResultsView(state: SignallingRef[IO, Model]): Resource[IO, HtmlDivElement[IO]] =
     div(
-      styleAttr := "display: flex; flex-wrap: wrap; justify-content: center; margin-top: 10px;",
+      cls := "grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4 mt-4",
       children <-- state.map { m =>
         val paginatedResults = m.searchResults.slice(m.currentPage * m.pageSize, (m.currentPage + 1) * m.pageSize)
         paginatedResults.map(cat => categoryCard(state, cat))
@@ -55,24 +56,27 @@ object SearchSection:
 
   def paginationView(state: SignallingRef[IO, Model]): Resource[IO, HtmlDivElement[IO]] =
     div(
-      styleAttr <-- state.map { m =>
-        val display = if m.searchResults.nonEmpty then "flex" else "none"
-        s"display: $display; flex-direction: column; align-items: center; margin-top: 20px;"
+      cls <-- state.map { m =>
+        if m.searchResults.nonEmpty then List("flex", "flex-col", "items-center", "mt-6", "gap-4")
+        else List("hidden")
       },
       div(
-        styleAttr := "display: flex; gap: 10px; align-items: center;",
+        cls := "flex gap-3 items-center",
         button(
-          styleAttr := "padding: 5px 15px;",
+          cls := "bg-twitch-dark-card border border-gray-700 text-white px-4 py-2 rounded-lg hover:bg-twitch-dark-hover disabled:opacity-40 disabled:cursor-not-allowed transition-colors cursor-pointer",
           "Previous",
           disabled <-- state.map(_.currentPage == 0),
           onClick --> { _.foreach(_ => state.update(s => s.copy(currentPage = s.currentPage - 1))) }
         ),
-        span(state.map { m =>
-          val totalLocalPages = Math.max(1, (m.searchResults.size + m.pageSize - 1) / m.pageSize)
-          s"Page ${m.currentPage + 1} of $totalLocalPages"
-        }),
+        span(
+          cls := "text-gray-400 text-sm",
+          state.map { m =>
+            val totalLocalPages = Math.max(1, (m.searchResults.size + m.pageSize - 1) / m.pageSize)
+            s"Page ${m.currentPage + 1} of $totalLocalPages"
+          }
+        ),
         button(
-          styleAttr := "padding: 5px 15px;",
+          cls := "bg-twitch-dark-card border border-gray-700 text-white px-4 py-2 rounded-lg hover:bg-twitch-dark-hover disabled:opacity-40 disabled:cursor-not-allowed transition-colors cursor-pointer",
           "Next",
           disabled <-- state.map { m =>
             val totalLocalPages = (m.searchResults.size + m.pageSize - 1) / m.pageSize
@@ -82,9 +86,9 @@ object SearchSection:
         )
       ),
       button(
-        styleAttr <-- state.map { m =>
-          val display = if m.paginationCursor.isDefined then "inline-block" else "none"
-          s"display: $display; margin-top: 10px; background: #9146ff; padding: 5px 15px;"
+        cls <-- state.map { m =>
+          if m.paginationCursor.isDefined then List("bg-twitch-purple", "hover:bg-twitch-purple-dark", "text-white", "font-medium", "px-6", "py-2", "rounded-full", "transition-colors", "cursor-pointer")
+          else List("hidden")
         },
         "Load More results from Twitch",
         onClick --> { _.foreach { _ =>
@@ -112,45 +116,50 @@ object SearchSection:
       .replace("{width}", "280").replace("{height}", "370")
       .replaceAll("""-(\d+)x(\d+)\.""", "-280x370.")
     div(
-      styleAttr <-- state.map { m =>
+      cls <-- state.map { m =>
         val isSelected = m.selectedCategoryIds.contains(cat.id)
-        s"margin: 10px; padding: 10px; border: ${if isSelected then "2px solid #9146ff" else "1px solid #ddd"}; border-radius: 8px; width: 160px; background: ${if isSelected then "#f0e6ff" else "white"}; display: flex; flex-direction: column; align-items: center;"
+        val base = List("bg-twitch-dark-card", "rounded-xl", "overflow-hidden", "border", "transition-all", "duration-200", "flex", "flex-col", "items-center")
+        if isSelected then base ++ List("border-twitch-purple", "ring-2", "ring-twitch-purple", "shadow-lg", "shadow-twitch-purple/20")
+        else base ++ List("border-gray-800", "hover:border-twitch-purple", "hover:shadow-lg", "hover:shadow-twitch-purple/10")
       },
       div(
-        styleAttr := "cursor: pointer; display: flex; flex-direction: column; align-items: center;",
+        cls := "cursor-pointer flex flex-col items-center w-full",
         onClick --> { _.foreach(_ => state.update(m =>
           val newSel = if m.selectedCategoryIds.contains(cat.id) then m.selectedCategoryIds - cat.id else m.selectedCategoryIds + cat.id
           m.copy(selectedCategoryIds = newSel)
         )) },
-        img(src := boxArtUrl, styleAttr := "width: 140px; height: 185px; border-radius: 4px;"),
-        p(styleAttr := "font-size: 0.9rem; font-weight: bold; margin: 5px 0; text-align: center;", cat.name)
+        img(src := boxArtUrl, cls := "w-full h-48 object-cover"),
+        p(cls := "text-sm font-semibold text-white p-3 text-center truncate w-full", cat.name)
       ),
-      button(
-        styleAttr <-- state.map { m =>
-          val isFollowed = m.followedCategories.exists(_.id == cat.id)
-          if isFollowed then "display: inline-block; background: #ff4646; margin-top: 5px; padding: 5px 10px;"
-          else "display: none;"
-        },
-        "Unfollow",
-        onClick --> { _.foreach(_ =>
-          (state.update(_.copy(status = Some("Unfollowing..."))) *>
-            ApiClient.postUnfollow(cat.id).flatMap(_ =>
-              ApiClient.fetchFollowed.flatMap(cats => state.update(_.copy(followedCategories = cats, status = None)))
-            )).start.void
-        )}
-      ),
-      button(
-        styleAttr <-- state.map { m =>
-          val isFollowed = m.followedCategories.exists(_.id == cat.id)
-          if isFollowed then "display: none;"
-          else "display: inline-block; background: #9146ff; margin-top: 5px; padding: 5px 10px;"
-        },
-        "Follow",
-        onClick --> { _.foreach(_ =>
-          (state.update(_.copy(status = Some(s"Following ${cat.name}..."))) *>
-            ApiClient.postFollow(cat).flatMap(_ =>
-              ApiClient.fetchFollowed.flatMap(cats => state.update(_.copy(followedCategories = cats, status = None)))
-            )).start.void
-        )}
+      div(
+        cls := "px-3 pb-3 w-full flex justify-center",
+        button(
+          cls <-- state.map { m =>
+            val isFollowed = m.followedCategories.exists(_.id == cat.id)
+            if isFollowed then List("bg-twitch-danger", "hover:bg-red-600", "text-white", "text-xs", "px-4", "py-1.5", "rounded-full", "transition-colors", "cursor-pointer", "w-full")
+            else List("hidden")
+          },
+          "Unfollow",
+          onClick --> { _.foreach(_ =>
+            (state.update(_.copy(status = Some("Unfollowing..."))) *>
+              ApiClient.postUnfollow(cat.id).flatMap(_ =>
+                ApiClient.fetchFollowed.flatMap(cats => state.update(_.copy(followedCategories = cats, status = None)))
+              )).start.void
+          )}
+        ),
+        button(
+          cls <-- state.map { m =>
+            val isFollowed = m.followedCategories.exists(_.id == cat.id)
+            if isFollowed then List("hidden")
+            else List("bg-twitch-purple", "hover:bg-twitch-purple-dark", "text-white", "text-xs", "px-4", "py-1.5", "rounded-full", "transition-colors", "cursor-pointer", "w-full")
+          },
+          "Follow",
+          onClick --> { _.foreach(_ =>
+            (state.update(_.copy(status = Some(s"Following ${cat.name}..."))) *>
+              ApiClient.postFollow(cat).flatMap(_ =>
+                ApiClient.fetchFollowed.flatMap(cats => state.update(_.copy(followedCategories = cats, status = None)))
+              )).start.void
+          )}
+        )
       )
     )

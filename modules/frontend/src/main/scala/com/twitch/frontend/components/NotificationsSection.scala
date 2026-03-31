@@ -12,14 +12,17 @@ object NotificationsSection:
 
   def notificationsView(state: SignallingRef[IO, Model]): Resource[IO, HtmlDivElement[IO]] =
     div(
-      styleAttr := "width: 100%;",
+      cls := "w-full",
       div(
-        styleAttr := "display: flex; flex-wrap: wrap; justify-content: center;",
+        cls := "grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4",
         children <-- state.map { m =>
           val followedIds = m.followedCategories.map(_.id).toSet
           val relevant = m.notifications.filter(n => followedIds.contains(n.categoryId))
           if relevant.isEmpty then
-            List(p(styleAttr := "color: #888;", "No streams detected live yet. Notifications will appear here."))
+            List(div(
+              cls := "col-span-full text-center py-8",
+              p(cls := "text-gray-500", "No streams detected live yet. Notifications will appear here.")
+            ))
           else
             relevant.map(notificationCard)
         }
@@ -28,28 +31,40 @@ object NotificationsSection:
 
   private def notificationCard(n: StreamNotification): Resource[IO, HtmlDivElement[IO]] =
     div(
-      styleAttr := "margin: 8px; padding: 10px; border: 2px solid #9146ff; border-radius: 8px; width: 200px; background: #f0e6ff; display: flex; flex-direction: column; align-items: center; cursor: pointer;",
+      cls := "bg-twitch-dark-card rounded-xl border border-gray-800 overflow-hidden hover:border-twitch-live transition-all duration-200 cursor-pointer hover:shadow-lg group",
       onClick --> { _.foreach(_ =>
         IO { val _ = org.scalajs.dom.window.open(s"https://twitch.tv/${n.streamerLogin}", "_blank") }
       )},
-      img(
-        src := n.thumbnailUrl,
-        styleAttr := "width: 180px; height: 100px; border-radius: 4px; object-fit: cover;"
+      // Thumbnail with LIVE badge
+      div(
+        cls := "relative",
+        img(
+          src := n.thumbnailUrl,
+          cls := "w-full h-28 object-cover"
+        ),
+        span(
+          cls := "absolute top-2 left-2 bg-twitch-live text-white text-xs font-bold px-2 py-0.5 rounded animate-live-pulse",
+          "LIVE"
+        )
       ),
-      p(
-        styleAttr := "font-size: 0.7rem; font-weight: bold; margin: 4px 0; color: #9146ff;",
-        s"LIVE - ${n.categoryName}"
-      ),
-      p(
-        styleAttr := "font-size: 0.85rem; font-weight: bold; margin: 2px 0;",
-        n.streamerName
-      ),
-      p(
-        styleAttr := "font-size: 0.7rem; margin: 2px 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; width: 100%; text-align: center;",
-        n.streamTitle
-      ),
-      p(
-        styleAttr := "font-size: 0.7rem; color: #666; margin: 2px 0;",
-        s"${n.viewerCount} viewers"
+      // Card content
+      div(
+        cls := "p-3 flex flex-col gap-1",
+        p(
+          cls := "text-xs font-bold text-twitch-purple",
+          n.categoryName
+        ),
+        p(
+          cls := "text-sm font-bold text-white",
+          n.streamerName
+        ),
+        p(
+          cls := "text-xs text-gray-400 truncate",
+          n.streamTitle
+        ),
+        p(
+          cls := "text-xs text-gray-500",
+          s"${n.viewerCount} viewers"
+        )
       )
     )

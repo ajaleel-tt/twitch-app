@@ -44,6 +44,10 @@ build/
 ### Mac OS ###
 .DS_Store
 
+### Node ###
+node_modules/
+modules/frontend/dist/
+
 ### Scala ###
 .bsp/
 

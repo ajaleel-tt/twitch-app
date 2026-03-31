@@ -11,11 +11,11 @@ object LoginSection:
 
   def loginButton(state: SignallingRef[IO, Model]): Resource[IO, HtmlDivElement[IO]] =
     div(
-      styleAttr := "margin-bottom: 20px;",
+      cls := "flex flex-col items-center gap-4 py-8",
       children <-- state.map { m =>
         if m.user.isEmpty then
           List(button(
-            styleAttr := "background: #9146ff;",
+            cls := "bg-twitch-purple hover:bg-twitch-purple-dark text-white font-semibold py-3 px-8 rounded-lg text-lg shadow-lg hover:shadow-xl transition-all duration-200 cursor-pointer",
             "Login with Twitch",
             onClick --> { _.foreach { _ =>
               state.get.flatMap { s =>
@@ -37,6 +37,6 @@ object LoginSection:
   def statusBar(state: SignallingRef[IO, Model]): Resource[IO, HtmlDivElement[IO]] =
     div(
       children <-- state.map { m =>
-        m.status.toList.map(s => p(styleAttr := "font-weight: bold; color: #9146ff;", s))
+        m.status.toList.map(s => p(cls := "text-twitch-purple font-medium text-sm", s))
       }
     )
