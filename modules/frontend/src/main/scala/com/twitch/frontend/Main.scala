@@ -53,8 +53,12 @@ object Main extends IOWebApp:
       .evalMap { _ =>
         requestNotificationPermission *>
           ApiClient.streamNotifications { n =>
-            state.update(m => m.copy(notifications = (n :: m.notifications).take(50))) *>
-              fireBrowserNotification(n)
+            state.get.flatMap { m =>
+              if m.notifications.exists(_.streamerId == n.streamerId) then IO.unit
+              else
+                state.update(m => m.copy(notifications = (n :: m.notifications).take(50))) *>
+                  fireBrowserNotification(n)
+            }
           }
       }
       .compile.drain
