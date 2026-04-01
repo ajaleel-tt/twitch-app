@@ -115,8 +115,6 @@ lazy val frontend = project.in(file("modules/frontend"))
       }
       Seq(scalawindOutput)
     },
-    Compile / sourceGenerators += scalawindGen.taskValue,
-
     // Build Tailwind CSS before compilation
     tailwindBuild := {
       val log = streams.value.log
@@ -139,6 +137,7 @@ lazy val frontend = project.in(file("modules/frontend"))
       outFile
     },
     Compile / compile := {
+      scalawindGen.value
       tailwindBuild.value
       (Compile / compile).value
     }

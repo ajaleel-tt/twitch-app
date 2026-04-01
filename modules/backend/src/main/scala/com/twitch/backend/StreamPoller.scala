@@ -51,8 +51,6 @@ class StreamPoller(
       appToken.set(None) *> getOrRefreshToken.flatMap(f)
     }
 
-  private val maxPagesPerCategory = 3
-
   private def fetchStreamsPage(token: String, categoryId: String, cursor: Option[String]): IO[TwitchStreamsResponse] =
     val baseUri = uri"https://api.twitch.tv/helix/streams"
       .withQueryParam("game_id", categoryId)
@@ -66,16 +64,14 @@ class StreamPoller(
 
   private def fetchLiveStreams(token: String, categoryIds: List[String]): IO[List[TwitchStream]] =
     categoryIds.flatTraverse { categoryId =>
-      def go(page: Int, cursor: Option[String], acc: List[TwitchStream]): IO[List[TwitchStream]] =
-        if page >= maxPagesPerCategory then IO.pure(acc)
-        else
-          fetchStreamsPage(token, categoryId, cursor).flatMap { resp =>
-            val newAcc = acc ++ resp.data
-            resp.pagination.flatMap(_.cursor) match
-              case Some(next) if resp.data.nonEmpty => go(page + 1, Some(next), newAcc)
-              case _ => IO.pure(newAcc)
-          }
-      go(0, None, Nil)
+      def go(cursor: Option[String], acc: List[TwitchStream]): IO[List[TwitchStream]] =
+        fetchStreamsPage(token, categoryId, cursor).flatMap { resp =>
+          val newAcc = acc ++ resp.data
+          resp.pagination.flatMap(_.cursor) match
+            case Some(next) if resp.data.nonEmpty => go(Some(next), newAcc)
+            case _ => IO.pure(newAcc)
+        }
+      go(None, Nil)
     }
 
   private def toNotification(s: TwitchStream): StreamNotification =
@@ -109,6 +105,21 @@ class StreamPoller(
       java.time.Duration.between(startedAt, now).toMinutes < 5
     }
 
+  // First poll seeds the set without sending notifications so we don't
+  // flood the user with every stream that happens to be live at startup.
+  private def seedOnce: IO[Unit] =
+    for
+      allCategories <- db.getAllFollowedCategories
+      _ <- IO.whenA(allCategories.nonEmpty) {
+        for
+          streams <- withTokenRefresh(token => fetchLiveStreams(token, allCategories.map(_.id)))
+          liveIds = streams.filter(_.`type` == "live").map(_.id).toSet
+          _ <- notifiedStreamIds.set(liveIds)
+          _ <- IO.println(s"Poller: seeded ${liveIds.size} already-live streams across ${allCategories.size} categories")
+        yield ()
+      }
+    yield ()
+
   private def pollOnce: IO[Unit] =
     for
       allCategories <- db.getAllFollowedCategories
@@ -116,13 +127,16 @@ class StreamPoller(
         for
           streams <- withTokenRefresh(token => fetchLiveStreams(token, allCategories.map(_.id)))
           now <- IO(Instant.now())
+          currentLiveIds = streams.filter(_.`type` == "live").map(_.id).toSet
           recentStreams = streams.filter(recentlyWentLive(_, now))
           alreadyNotified <- notifiedStreamIds.get
           newStreams = recentStreams.filter(s => !alreadyNotified.contains(s.id))
-          _ <- notifiedStreamIds.set(recentStreams.map(_.id).toSet)
+          // Keep all currently live stream IDs so they never re-trigger;
+          // drop IDs of streams that went offline so the set doesn't grow forever.
+          _ <- notifiedStreamIds.set(alreadyNotified.intersect(currentLiveIds) ++ currentLiveIds)
+          _ <- IO.println(s"Poller: fetched ${streams.size} total streams across ${allCategories.size} categories, ${recentStreams.size} recently live, ${newStreams.size} new")
           _ <- IO.whenA(newStreams.nonEmpty) {
-            IO.println(s"Poller: found ${newStreams.size} streams that just went live") *>
-              broadcastNotifications(newStreams.map(toNotification))
+            broadcastNotifications(newStreams.map(toNotification))
           }
         yield ()
       }
@@ -130,7 +144,7 @@ class StreamPoller(
 
   def start: IO[Nothing] =
     IO.println("StreamPoller: starting (polling every 60s)") *>
-      pollOnce.handleErrorWith(e => IO.println(s"StreamPoller error: $e")) *>
+      seedOnce.handleErrorWith(e => IO.println(s"StreamPoller seed error: $e")) *>
       (IO.sleep(60.seconds) *> pollOnce.handleErrorWith(e => IO.println(s"StreamPoller error: $e"))).foreverM
 
 object StreamPoller:
