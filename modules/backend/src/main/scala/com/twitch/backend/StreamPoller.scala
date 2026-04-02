@@ -127,13 +127,12 @@ class StreamPoller(
         for
           streams <- withTokenRefresh(token => fetchLiveStreams(token, allCategories.map(_.id)))
           now <- IO(Instant.now())
-          currentLiveIds = streams.filter(_.`type` == "live").map(_.id).toSet
           recentStreams = streams.filter(recentlyWentLive(_, now))
           alreadyNotified <- notifiedStreamIds.get
           newStreams = recentStreams.filter(s => !alreadyNotified.contains(s.id))
-          // Keep all currently live stream IDs so they never re-trigger;
-          // drop IDs of streams that went offline so the set doesn't grow forever.
-          _ <- notifiedStreamIds.set(alreadyNotified.intersect(currentLiveIds) ++ currentLiveIds)
+          // Accumulate all seen stream IDs so that API pagination flicker
+          // between polls can never cause a re-notification.
+          _ <- notifiedStreamIds.set(alreadyNotified ++ streams.map(_.id).toSet)
           _ <- IO.println(s"Poller: fetched ${streams.size} total streams across ${allCategories.size} categories, ${recentStreams.size} recently live, ${newStreams.size} new")
           _ <- IO.whenA(newStreams.nonEmpty) {
             broadcastNotifications(newStreams.map(toNotification))
