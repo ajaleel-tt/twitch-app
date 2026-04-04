@@ -1,0 +1,27 @@
+{
+  "name": "twitch-app",
+  "version": "1.0.0",
+  "description": "A multi-module Scala 3 (v3.6.3) project using Cats-Effect, Tyrian (Scala.js), and Http4s.",
+  "main": "index.js",
+  "scripts": {
+    "tw:watch": "npx tailwindcss -i ./modules/frontend/tailwind.css -o ./modules/frontend/dist/output.css --watch",
+    "tw:build": "npx tailwindcss -i ./modules/frontend/tailwind.css -o ./modules/frontend/dist/output.css --minify",
+    "scalawind:gen": "npx scalawind generate -o ./modules/frontend/src/main/scala/com/twitch/frontend/scalawind.scala -p com.twitch.frontend"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ajaleel-tt/twitch-app.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/ajaleel-tt/twitch-app/issues"
+  },
+  "homepage": "https://github.com/ajaleel-tt/twitch-app#readme",
+  "devDependencies": {
+    "@tailwindcss/cli": "^4.2.2",
+    "scalawind": "^1.0.3",
+    "tailwindcss": "^3.4.19"
+  }
+}

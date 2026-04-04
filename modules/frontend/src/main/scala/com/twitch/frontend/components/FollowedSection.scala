@@ -12,10 +12,13 @@ object FollowedSection:
 
   def followedCategoriesView(state: SignallingRef[IO, Model]): Resource[IO, HtmlDivElement[IO]] =
     div(
-      styleAttr := "display: flex; flex-wrap: wrap; justify-content: center;",
+      cls := "grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-4",
       children <-- state.map { m =>
         if m.followedCategories.isEmpty then
-          List(p("You haven't followed any categories yet."))
+          List(div(
+            cls := "col-span-full text-center py-8",
+            p(cls := "text-gray-500", "You haven't followed any categories yet.")
+          ))
         else
           m.followedCategories.map { cat =>
             followedCategoryCard(state, cat)
@@ -28,17 +31,17 @@ object FollowedSection:
       .replace("{width}", "140").replace("{height}", "184")
       .replaceAll("""-(\d+)x(\d+)\.""", "-140x184.")
     div(
-      styleAttr := "margin: 10px; padding: 10px; border: 1px solid #ddd; border-radius: 8px; width: 120px; background: white; display: flex; flex-direction: column; align-items: center;",
-      img(src := boxArtUrl, styleAttr := "width: 70px; height: 92px; border-radius: 4px;"),
-      p(styleAttr := "font-size: 0.7rem; font-weight: bold; margin: 5px 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; width: 100%; text-align: center;", cat.name),
+      cls := "bg-twitch-dark-card rounded-xl border border-gray-800 p-3 flex flex-col items-center gap-2 hover:border-twitch-purple transition-all duration-200",
+      img(src := boxArtUrl, cls := "w-24 h-32 rounded-lg object-cover"),
+      p(cls := "text-sm font-semibold text-white text-center truncate w-full", cat.name),
       button(
-        styleAttr := "background: #ff4646; font-size: 0.7rem; padding: 2px 5px;",
+        cls := "bg-twitch-danger/80 hover:bg-twitch-danger text-white text-xs px-3 py-1 rounded-full transition-colors cursor-pointer",
         "Unfollow",
         onClick --> { _.foreach(_ =>
-          state.update(_.copy(status = Some("Unfollowing..."))) *>
+          (state.update(_.copy(status = Some("Unfollowing..."))) *>
             ApiClient.postUnfollow(cat.id).flatMap(_ =>
               ApiClient.fetchFollowed.flatMap(cats => state.update(_.copy(followedCategories = cats, status = None)))
-            )
+            )).start.void
         )}
       )
     )

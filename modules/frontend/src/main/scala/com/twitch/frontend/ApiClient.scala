@@ -40,15 +40,15 @@ object ApiClient:
       case Left(_)     => None
     }
 
-  def postFollow(cat: TwitchCategory): IO[Boolean] =
+  def postFollow(cat: TwitchCategory): IO[Unit] =
     val req = Http4sRequest[IO](Method.POST, Uri.unsafeFromString("/api/follow"))
       .withEntity(FollowRequest(cat).asJson.noSpaces)
       .withContentType(`Content-Type`(MediaType.application.json))
-    httpClient.successful(req)
+    httpClient.expect[String](req).void
 
-  def postUnfollow(id: String): IO[Boolean] =
+  def postUnfollow(id: String): IO[Unit] =
     val req = Http4sRequest[IO](Method.POST, Uri.unsafeFromString(s"/api/unfollow/$id"))
-    httpClient.successful(req)
+    httpClient.expect[String](req).void
 
   def postLogout: IO[Unit] =
     val req = Http4sRequest[IO](Method.POST, Uri.unsafeFromString("/api/logout"))

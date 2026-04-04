@@ -53,8 +53,12 @@ object Main extends IOWebApp:
       .evalMap { _ =>
         requestNotificationPermission *>
           ApiClient.streamNotifications { n =>
-            state.update(m => m.copy(notifications = (n :: m.notifications).take(50))) *>
-              fireBrowserNotification(n)
+            state.get.flatMap { m =>
+              if m.notifications.exists(_.streamerId == n.streamerId) then IO.unit
+              else
+                state.update(m => m.copy(notifications = (n :: m.notifications).take(50))) *>
+                  fireBrowserNotification(n)
+            }
           }
       }
       .compile.drain
@@ -62,37 +66,64 @@ object Main extends IOWebApp:
 
   private def appView(state: SignallingRef[IO, Model]): Resource[IO, HtmlDivElement[IO]] =
     div(
-      styleAttr := "width: 100%; display: flex; flex-direction: column; align-items: center;",
-      h1("Twitch App"),
-      LoginSection.loginButton(state),
-      LoginSection.statusBar(state),
-      loggedInView(state)
+      cls := "min-h-screen bg-twitch-dark flex flex-col items-center",
+      // Header bar
+      div(
+        cls := "w-full bg-twitch-dark-card border-b border-gray-800 px-6 py-4 flex items-center justify-center",
+        h1(cls := "text-2xl font-bold text-white tracking-tight", "Twitch App")
+      ),
+      // Main content
+      div(
+        cls := "w-full max-w-5xl mx-auto px-4 py-8 flex flex-col items-center gap-6",
+        LoginSection.loginButton(state),
+        LoginSection.statusBar(state),
+        loggedInView(state)
+      )
     )
 
   private def loggedInView(state: SignallingRef[IO, Model]): Resource[IO, HtmlDivElement[IO]] =
     div(
-      styleAttr <-- state.map { m =>
-        val display = if m.user.isDefined then "flex" else "none"
-        s"width: 100%; display: $display; flex-direction: column; align-items: center;"
+      cls <-- state.map { m =>
+        if m.user.isDefined then List("w-full", "flex", "flex-col", "items-center", "gap-8")
+        else List("hidden")
       },
-      h2(state.map(m => m.user.map(u => s"Welcome, ${u.display_name}!").getOrElse(""))),
-      img(src <-- state.map(_.user.map(_.profile_image_url).getOrElse("")), styleAttr := "border-radius: 50%; width: 80px; margin-bottom: 10px;"),
-      button(
-        styleAttr := "background: #ff4646;",
-        "Logout",
-        onClick --> { _.foreach { _ =>
-          ApiClient.postLogout *> IO(org.scalajs.dom.window.location.reload())
-        }}
+      // User profile
+      div(
+        cls := "flex flex-col items-center gap-3",
+        h2(
+          cls := "text-xl font-semibold text-white",
+          state.map(m => m.user.map(u => s"Welcome, ${u.display_name}!").getOrElse(""))
+        ),
+        img(
+          src <-- state.map(_.user.map(_.profile_image_url).getOrElse("")),
+          cls := "rounded-full w-20 h-20 ring-2 ring-twitch-purple"
+        ),
+        button(
+          cls := "bg-twitch-danger hover:bg-red-600 text-white font-medium px-4 py-2 rounded-lg transition-colors cursor-pointer",
+          "Logout",
+          onClick --> { _.foreach { _ =>
+            ApiClient.postLogout *> IO(org.scalajs.dom.window.location.reload())
+          }}
+        )
       ),
-      hr(styleAttr := "width: 100%; margin: 20px 0;"),
-      h3("Search Categories"),
-      SearchSection.searchInput(state),
-      SearchSection.searchResultsView(state),
-      SearchSection.paginationView(state),
-      hr(styleAttr := "width: 100%; margin: 20px 0;"),
-      h3("Live Now in Your Followed Categories"),
-      NotificationsSection.notificationsView(state),
-      hr(styleAttr := "width: 100%; margin: 20px 0;"),
-      h3("Your Followed Categories"),
-      FollowedSection.followedCategoriesView(state)
+      // Search section
+      div(
+        cls := "w-full border-t border-gray-800 pt-8",
+        h3(cls := "text-lg font-bold text-white mb-4 text-center", "Search Categories"),
+        SearchSection.searchInput(state),
+        SearchSection.searchResultsView(state),
+        SearchSection.paginationView(state)
+      ),
+      // Live Now section
+      div(
+        cls := "w-full border-t border-gray-800 pt-8",
+        h3(cls := "text-lg font-bold text-white mb-4 text-center", "Live Now in Your Followed Categories"),
+        NotificationsSection.notificationsView(state)
+      ),
+      // Followed Categories section
+      div(
+        cls := "w-full border-t border-gray-800 pt-8",
+        h3(cls := "text-lg font-bold text-white mb-4 text-center", "Your Followed Categories"),
+        FollowedSection.followedCategoriesView(state)
+      )
     )
