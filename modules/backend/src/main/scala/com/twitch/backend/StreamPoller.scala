@@ -3,6 +3,7 @@ package com.twitch.backend
 import cats.effect.*
 import cats.effect.std.Queue
 import cats.syntax.all.*
+import cats.effect.implicits.*
 import org.http4s.*
 import org.http4s.client.Client
 import org.http4s.circe.CirceEntityDecoder.*
@@ -63,7 +64,7 @@ class StreamPoller(
     client.expect[TwitchStreamsResponse](req)
 
   private def fetchLiveStreams(token: String, categoryIds: List[String]): IO[List[TwitchStream]] =
-    categoryIds.flatTraverse { categoryId =>
+    categoryIds.parTraverseN(5) { categoryId =>
       def go(cursor: Option[String], acc: List[TwitchStream]): IO[List[TwitchStream]] =
         fetchStreamsPage(token, categoryId, cursor).flatMap { resp =>
           val newAcc = resp.data.reverse ::: acc
@@ -72,7 +73,7 @@ class StreamPoller(
             case _ => IO.pure(newAcc.reverse)
         }
       go(None, Nil)
-    }
+    }.map(_.flatten)
 
   private def toNotification(s: TwitchStream): StreamNotification =
     StreamNotification(
