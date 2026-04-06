@@ -18,7 +18,10 @@ The backend polls the Twitch API every 60 seconds and pushes updates to connecte
 
 ### Running Locally
 
-**Prerequisites:** JDK 11+, sbt, Node.js (used by the build for Tailwind CSS generation; `npm install` runs automatically)
+**Prerequisites** (must be on your PATH):
+- JDK 11+
+- [sbt](https://www.scala-sbt.org/download)
+- [Node.js](https://nodejs.org/) 20+ (provides `npm` and `npx`, used by the build for Tailwind CSS and Scalawind generation; `npm install` runs automatically on first build)
 
 1. Register an app on the [Twitch Developer Console](https://dev.twitch.tv/console) with redirect URL `http://localhost:8080/auth/callback`.
 
