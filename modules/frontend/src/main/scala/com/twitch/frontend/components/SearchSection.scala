@@ -10,6 +10,23 @@ import com.twitch.core.*
 
 object SearchSection:
 
+  private def doSearch(state: SignallingRef[IO, Model]): IO[Unit] =
+    state.get.flatMap { m =>
+      if m.searchQuery.trim.isEmpty then IO.unit
+      else
+        state.update(_.copy(status = Some("Searching..."), searchResults = Vector.empty, paginationCursor = None, currentPage = 0)) *>
+          ApiClient.searchCategories(m.searchQuery).flatMap {
+            case Some(res) =>
+              state.update(_.copy(
+                searchResults = res.data.toVector,
+                paginationCursor = res.pagination.flatMap(_.cursor),
+                status = None
+              ))
+            case None =>
+              state.update(_.copy(status = Some("Error: Search failed")))
+          }
+    }
+
   def searchInput(state: SignallingRef[IO, Model]): Resource[IO, HtmlDivElement[IO]] =
     div(
       cls := "flex gap-3 justify-center mb-6",
@@ -19,29 +36,14 @@ object SearchSection:
           placeholder := "Search for a category...",
           cls := "bg-twitch-dark-card border border-gray-700 text-white placeholder-gray-500 rounded-lg px-4 py-3 w-80 focus:outline-none focus:ring-2 focus:ring-twitch-purple focus:border-transparent transition-all",
           value <-- state.map(_.searchQuery),
-          onInput --> { _.foreach(_ => self.value.get.flatMap(q => state.update(_.copy(searchQuery = q)))) }
+          onInput --> { _.foreach(_ => self.value.get.flatMap(q => state.update(_.copy(searchQuery = q)))) },
+          onKeyPress --> { _.foreach(e => IO.whenA(e.key == "Enter")(doSearch(state))) }
         )
       },
       button(
         cls := "bg-twitch-purple hover:bg-twitch-purple-dark text-white font-medium px-6 py-3 rounded-lg transition-colors cursor-pointer",
         "Search",
-        onClick --> { _.foreach { _ =>
-          state.get.flatMap { m =>
-            if m.searchQuery.trim.isEmpty then IO.unit
-            else
-              (state.update(_.copy(status = Some("Searching..."), searchResults = Vector.empty, paginationCursor = None, currentPage = 0)) *>
-                ApiClient.searchCategories(m.searchQuery).flatMap {
-                  case Some(res) =>
-                    state.update(_.copy(
-                      searchResults = res.data.toVector,
-                      paginationCursor = res.pagination.flatMap(_.cursor),
-                      status = None
-                    ))
-                  case None =>
-                    state.update(_.copy(status = Some("Error: Search failed")))
-                }).start.void
-          }
-        }}
+        onClick --> { _.foreach(_ => doSearch(state)) }
       )
     )
 
@@ -95,7 +97,7 @@ object SearchSection:
           state.get.flatMap { s =>
             if s.paginationCursor.isEmpty then IO.unit
             else
-              (state.update(_.copy(status = Some("Fetching more..."))) *>
+              state.update(_.copy(status = Some("Fetching more..."))) *>
                 ApiClient.searchCategories(s.searchQuery, s.paginationCursor).flatMap {
                   case Some(res) =>
                     state.update(st => st.copy(
@@ -105,7 +107,7 @@ object SearchSection:
                     ))
                   case None =>
                     state.update(_.copy(status = Some("Error: Failed to load more")))
-                }).start.void
+                }
           }
         }}
       )
