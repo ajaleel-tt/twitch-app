@@ -7,7 +7,7 @@ case class Model(
     user: Option[TwitchUser] = None,
     twitchClientId: Option[String] = None,
     searchQuery: String = "",
-    searchResults: List[TwitchCategory] = Nil,
+    searchResults: Vector[TwitchCategory] = Vector.empty,
     selectedCategoryIds: Set[String] = Set.empty,
     followedCategories: List[TwitchCategory] = Nil,
     paginationCursor: Option[String] = None,

@@ -29,11 +29,11 @@ object SearchSection:
           state.get.flatMap { m =>
             if m.searchQuery.trim.isEmpty then IO.unit
             else
-              (state.update(_.copy(status = Some("Searching..."), searchResults = Nil, paginationCursor = None, currentPage = 0)) *>
+              (state.update(_.copy(status = Some("Searching..."), searchResults = Vector.empty, paginationCursor = None, currentPage = 0)) *>
                 ApiClient.searchCategories(m.searchQuery).flatMap {
                   case Some(res) =>
                     state.update(_.copy(
-                      searchResults = res.data,
+                      searchResults = res.data.toVector,
                       paginationCursor = res.pagination.flatMap(_.cursor),
                       status = None
                     ))
@@ -50,7 +50,7 @@ object SearchSection:
       cls := "grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4 mt-4",
       children <-- state.map { m =>
         val paginatedResults = m.searchResults.slice(m.currentPage * m.pageSize, (m.currentPage + 1) * m.pageSize)
-        paginatedResults.map(cat => categoryCard(state, cat))
+        paginatedResults.map(cat => categoryCard(state, cat)).toList
       }
     )
 

@@ -92,9 +92,10 @@ class StreamPoller(
       userIds = queues.values.map(_._1).toSet
       followedByUser <- userIds.toList.traverse(uid => db.getFollowed(uid).map(cats => uid -> cats.map(_.id).toSet))
       followedMap = followedByUser.toMap
+      byCategoryId = notifications.groupBy(_.categoryId)
       _ <- queues.values.toList.traverse_ { case (userId, queue) =>
         val userCategoryIds = followedMap.getOrElse(userId, Set.empty)
-        val relevantNotifications = notifications.filter(n => userCategoryIds.contains(n.categoryId))
+        val relevantNotifications = userCategoryIds.toList.flatMap(id => byCategoryId.getOrElse(id, Nil))
         relevantNotifications.traverse_(queue.offer)
       }
     yield ()
@@ -113,7 +114,7 @@ class StreamPoller(
       _ <- IO.whenA(allCategories.nonEmpty) {
         for
           streams <- withTokenRefresh(token => fetchLiveStreams(token, allCategories.map(_.id)))
-          liveIds = streams.filter(_.`type` == "live").map(_.id).toSet
+          liveIds = streams.iterator.filter(_.`type` == "live").map(_.id).toSet
           _ <- notifiedStreamIds.set(liveIds)
           _ <- IO.println(s"Poller: seeded ${liveIds.size} already-live streams across ${allCategories.size} categories")
         yield ()
@@ -132,7 +133,7 @@ class StreamPoller(
           newStreams = recentStreams.filter(s => !alreadyNotified.contains(s.id))
           // Accumulate all seen stream IDs so that API pagination flicker
           // between polls can never cause a re-notification.
-          _ <- notifiedStreamIds.set(alreadyNotified ++ streams.map(_.id).toSet)
+          _ <- notifiedStreamIds.set(alreadyNotified ++ streams.iterator.map(_.id).toSet)
           _ <- IO.println(s"Poller: fetched ${streams.size} total streams across ${allCategories.size} categories, ${recentStreams.size} recently live, ${newStreams.size} new")
           _ <- IO.whenA(newStreams.nonEmpty) {
             broadcastNotifications(newStreams.map(toNotification))
