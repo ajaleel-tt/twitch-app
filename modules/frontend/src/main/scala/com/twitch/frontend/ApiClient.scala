@@ -8,6 +8,7 @@ import org.http4s.dom.FetchClientBuilder
 import org.http4s.{Request as Http4sRequest, Method, Uri, MediaType}
 import org.http4s.headers.`Content-Type`
 import org.scalajs.dom
+import scala.concurrent.duration.*
 import com.twitch.core.*
 
 object ApiClient:
@@ -55,6 +56,14 @@ object ApiClient:
     httpClient.expect[String](req).void.handleError(_ => ())
 
   def streamNotifications(onNotification: StreamNotification => IO[Unit]): IO[Nothing] =
+    connectSSE(onNotification)
+      .handleErrorWith { e =>
+        IO.println(s"SSE connection error: $e, reconnecting in 5s...") *>
+          IO.sleep(5.seconds) *>
+          streamNotifications(onNotification)
+      }
+
+  private def connectSSE(onNotification: StreamNotification => IO[Unit]): IO[Nothing] =
     IO.async[Nothing] { cb =>
       IO {
         val es = new dom.EventSource("/api/notifications/stream")
