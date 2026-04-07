@@ -26,6 +26,7 @@ class Routes(
     redirectUri: String,
     client: Client[IO],
     userSession: Ref[IO, Map[String, SessionData]],
+    pendingOAuthStates: Ref[IO, Set[String]],
     db: Database,
     notificationQueues: Ref[IO, Map[String, (String, Queue[IO, StreamNotification])]]
 ):
@@ -36,13 +37,23 @@ class Routes(
   }
 
   private object CodeQueryParamMatcher extends QueryParamDecoderMatcher[String]("code")
+  private object StateQueryParamMatcher extends QueryParamDecoderMatcher[String]("state")
   private object SearchQueryParamMatcher extends QueryParamDecoderMatcher[String]("query")
   private object AfterQueryParamMatcher extends OptionalQueryParamDecoderMatcher[String]("after")
 
   def authRoutes: HttpRoutes[IO] = HttpRoutes.of[IO] {
-    case GET -> Root / "auth" / "callback" :? CodeQueryParamMatcher(code) =>
+    case GET -> Root / "auth" / "login" =>
+      val state = UUID.randomUUID().toString
+      val authorizeUri = s"https://id.twitch.tv/oauth2/authorize?client_id=$clientId&redirect_uri=$redirectUri&response_type=code&scope=user:read:email&state=$state"
+      pendingOAuthStates.update(_ + state) *>
+        Found(Location(Uri.unsafeFromString(authorizeUri)))
+
+    case GET -> Root / "auth" / "callback" :? CodeQueryParamMatcher(code) +& StateQueryParamMatcher(state) =>
       val flow = for {
-        _ <- IO.println(s"Received auth code: $code")
+        pending <- pendingOAuthStates.get
+        _ <- IO.raiseUnless(pending.contains(state))(new RuntimeException("Invalid OAuth state parameter"))
+        _ <- pendingOAuthStates.update(_ - state)
+        _ <- IO.println("Received auth callback")
         req = Request[IO](method = Method.POST, uri = uri"https://id.twitch.tv/oauth2/token").withEntity(
           UrlForm(
             "client_id" -> clientId,
@@ -63,7 +74,7 @@ class Routes(
           }
         }
         
-        _ <- IO.println(s"Received token: ${tokenResponse.access_token}")
+        _ <- IO.println("Token exchange successful")
         userReq = Request[IO](method = Method.GET, uri = uri"https://api.twitch.tv/helix/users").putHeaders(
           Authorization(Credentials.Token(AuthScheme.Bearer, tokenResponse.access_token)),
           Header.Raw(ci"Client-Id", clientId)

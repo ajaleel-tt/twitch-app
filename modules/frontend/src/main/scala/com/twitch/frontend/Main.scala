@@ -62,7 +62,6 @@ object Main extends IOWebApp:
           }
       }
       .compile.drain
-      .handleErrorWith(e => IO.println(s"Notification stream error: $e"))
 
   private def appView(state: SignallingRef[IO, Model]): Resource[IO, HtmlDivElement[IO]] =
     div(

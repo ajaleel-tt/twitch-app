@@ -7,43 +7,6 @@ ThisBuild / scalaVersion := scala3Version
 ThisBuild / version      := "0.1.0-SNAPSHOT"
 ThisBuild / organization := "com.twitch"
 
-// ── Node.js resolution ─────────────────────────────────────────────
-// Find a Node >= 20 via nvm or system PATH. Scalawind and Tailwind CLI
-// require a modern Node; the nvm default may be too old.
-
-def findNodeBin(): File = {
-  val home = System.getProperty("user.home")
-  val nvmDir = Option(System.getenv("NVM_DIR")).getOrElse(home + "/.nvm")
-  val versionsDir = new File(nvmDir, "versions/node")
-  val candidates: Seq[File] = if (versionsDir.isDirectory) {
-    versionsDir.listFiles.toSeq
-      .filter(_.getName.startsWith("v"))
-      .sortBy { f =>
-        val parts = f.getName.stripPrefix("v").split('.')
-        (parts(0).toInt, parts.lift(1).map(_.toInt).getOrElse(0), parts.lift(2).map(_.toInt).getOrElse(0))
-      }
-      .reverse
-      .map(d => new File(d, "bin"))
-      .filter(d => new File(d, "npx").exists())
-  } else Seq.empty
-  candidates.find { bin =>
-    val node = new File(bin, "node")
-    val version = Process(Seq(node.absolutePath, "--version")).!!.trim.stripPrefix("v")
-    version.split('.').headOption.exists(_.toInt >= 20)
-  }.getOrElse {
-    val systemNpx = "which npx".!!.trim
-    new File(systemNpx).getParentFile
-  }
-}
-
-lazy val nodeBin: File = findNodeBin()
-
-def runNode(cmd: Seq[String], cwd: File, log: sbt.util.Logger): Int = {
-  val path = nodeBin.absolutePath + ":" + Option(System.getenv("PATH")).getOrElse("")
-  val env = Seq("PATH" -> path)
-  Process(cmd, cwd, env: _*).!(ProcessLogger(s => log.info(s), s => log.error(s)))
-}
-
 // ── npm / Tailwind / Scalawind tasks ───────────────────────────────
 
 val npmInstall = taskKey[Unit]("Run npm install if node_modules is missing")
@@ -57,8 +20,8 @@ ThisBuild / npmInstall := {
   val nodeModules = baseDirectory.value / "node_modules"
   if (!nodeModules.exists()) {
     log.info("Running npm install...")
-    val npm = new File(nodeBin, "npm").absolutePath
-    val exitCode = runNode(Seq(npm, "install"), baseDirectory.value, log)
+    val exitCode = Process(Seq("npm", "install"), baseDirectory.value)
+      .!(ProcessLogger(s => log.info(s), s => log.error(s)))
     if (exitCode != 0) sys.error("npm install failed")
   }
 }
@@ -105,12 +68,12 @@ lazy val frontend = project.in(file("modules/frontend"))
       if (!scalawindOutput.exists()) {
         log.info("Generating scalawind.scala...")
         val base = (ThisBuild / baseDirectory).value
-        val npxPath = new File(nodeBin, "npx").absolutePath
-        val exitCode = runNode(
-          Seq(npxPath, "scalawind", "generate",
+        val exitCode = Process(
+          Seq("npx", "scalawind", "generate",
             "-o", scalawindOutput.absolutePath,
             "-p", "com.twitch.frontend"),
-          base, log)
+          base)
+          .!(ProcessLogger(s => log.info(s), s => log.error(s)))
         if (exitCode != 0) sys.error("scalawind generate failed")
       }
       Seq(scalawindOutput)
@@ -126,12 +89,12 @@ lazy val frontend = project.in(file("modules/frontend"))
       if (!outDir.exists()) outDir.mkdirs()
       if (!outFile.exists() || inputFile.lastModified() > outFile.lastModified()) {
         log.info("Building Tailwind CSS...")
-        val npxPath = new File(nodeBin, "npx").absolutePath
-        val exitCode = runNode(
-          Seq(npxPath, "tailwindcss",
+        val exitCode = Process(
+          Seq("npx", "tailwindcss",
             "-i", inputFile.absolutePath,
             "-o", outFile.absolutePath),
-          base, log)
+          base)
+          .!(ProcessLogger(s => log.info(s), s => log.error(s)))
         if (exitCode != 0) sys.error("tailwindcss build failed")
       }
       outFile
