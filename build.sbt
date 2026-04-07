@@ -15,12 +15,21 @@ val tailwindBuild = taskKey[File]("Build Tailwind CSS output")
 
 val scalawindOutput = file("modules/frontend/src/main/scala/com/twitch/frontend/scalawind.scala")
 
+// Helper to build command for Windows compatibility
+def buildCommand(cmd: String, args: Seq[String]): Seq[String] = {
+  if (System.getProperty("os.name").toLowerCase.contains("win")) {
+    Seq("cmd", "/c", cmd) ++ args
+  } else {
+    Seq(cmd) ++ args
+  }
+}
+
 ThisBuild / npmInstall := {
   val log = streams.value.log
   val nodeModules = baseDirectory.value / "node_modules"
   if (!nodeModules.exists()) {
     log.info("Running npm install...")
-    val exitCode = Process(Seq("npm", "install"), baseDirectory.value)
+    val exitCode = Process(buildCommand("npm", Seq("install")), baseDirectory.value)
       .!(ProcessLogger(s => log.info(s), s => log.error(s)))
     if (exitCode != 0) sys.error("npm install failed")
   }
@@ -69,9 +78,9 @@ lazy val frontend = project.in(file("modules/frontend"))
         log.info("Generating scalawind.scala...")
         val base = (ThisBuild / baseDirectory).value
         val exitCode = Process(
-          Seq("npx", "scalawind", "generate",
+          buildCommand("npx", Seq("scalawind", "generate",
             "-o", scalawindOutput.absolutePath,
-            "-p", "com.twitch.frontend"),
+            "-p", "com.twitch.frontend")),
           base)
           .!(ProcessLogger(s => log.info(s), s => log.error(s)))
         if (exitCode != 0) sys.error("scalawind generate failed")
@@ -90,9 +99,9 @@ lazy val frontend = project.in(file("modules/frontend"))
       if (!outFile.exists() || inputFile.lastModified() > outFile.lastModified()) {
         log.info("Building Tailwind CSS...")
         val exitCode = Process(
-          Seq("npx", "tailwindcss",
+          buildCommand("npx", Seq("tailwindcss",
             "-i", inputFile.absolutePath,
-            "-o", outFile.absolutePath),
+            "-o", outFile.absolutePath)),
           base)
           .!(ProcessLogger(s => log.info(s), s => log.error(s)))
         if (exitCode != 0) sys.error("tailwindcss build failed")
