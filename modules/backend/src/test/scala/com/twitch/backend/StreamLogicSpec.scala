@@ -98,6 +98,50 @@ class StreamLogicSpec extends FunSuite:
     assert(!StreamLogic.recentlyWentLive(stream, now, window))
   }
 
+  // ── findNewStreams ─────────────────────────────────────────────────
+
+  test("findNewStreams: returns recent streams not already notified") {
+    val s1 = mkStream(id = "s1", startedAt = "2024-01-01T12:06:01Z") // 4 min ago — recent
+    val s2 = mkStream(id = "s2", startedAt = "2024-01-01T12:06:01Z") // 4 min ago — recent but already notified
+    val s3 = mkStream(id = "s3", startedAt = "2024-01-01T12:00:00Z") // 10 min ago — not recent
+    val alreadyNotified = Set("s2")
+    val (newStreams, _) = StreamLogic.findNewStreams(List(s1, s2, s3), alreadyNotified, now, window)
+    assertEquals(newStreams.map(_.id), List("s1"))
+  }
+
+  test("findNewStreams: returns empty when all recent streams already notified") {
+    val s1 = mkStream(id = "s1", startedAt = "2024-01-01T12:06:01Z")
+    val (newStreams, _) = StreamLogic.findNewStreams(List(s1), Set("s1"), now, window)
+    assertEquals(newStreams, Nil)
+  }
+
+  test("findNewStreams: returns empty when no streams are recent") {
+    val s1 = mkStream(id = "s1", startedAt = "2024-01-01T12:00:00Z") // 10 min ago
+    val (newStreams, _) = StreamLogic.findNewStreams(List(s1), Set.empty, now, window)
+    assertEquals(newStreams, Nil)
+  }
+
+  test("findNewStreams: updated notified set includes ALL stream IDs, not just new ones") {
+    val s1 = mkStream(id = "s1", startedAt = "2024-01-01T12:06:01Z") // recent, new
+    val s2 = mkStream(id = "s2", startedAt = "2024-01-01T12:00:00Z") // old, not recent
+    val alreadyNotified = Set("s0") // previously seen
+    val (_, updatedNotified) = StreamLogic.findNewStreams(List(s1, s2), alreadyNotified, now, window)
+    assertEquals(updatedNotified, Set("s0", "s1", "s2"))
+  }
+
+  test("findNewStreams: non-live streams are excluded from new but included in notified set") {
+    val s1 = mkStream(id = "s1", tpe = "vodcast", startedAt = "2024-01-01T12:09:00Z")
+    val (newStreams, updatedNotified) = StreamLogic.findNewStreams(List(s1), Set.empty, now, window)
+    assertEquals(newStreams, Nil)
+    assert(updatedNotified.contains("s1"))
+  }
+
+  test("findNewStreams: handles empty input") {
+    val (newStreams, updatedNotified) = StreamLogic.findNewStreams(Nil, Set("s0"), now, window)
+    assertEquals(newStreams, Nil)
+    assertEquals(updatedNotified, Set("s0"))
+  }
+
   // ── applyTagFilters ───────────────────────────────────────────────
 
   test("applyTagFilters: no filters passes all notifications") {

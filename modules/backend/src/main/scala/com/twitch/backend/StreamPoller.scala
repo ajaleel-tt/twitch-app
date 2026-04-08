@@ -92,9 +92,6 @@ class StreamPoller(
       }
     yield ()
 
-  private def recentlyWentLive(s: TwitchStream, now: Instant): Boolean =
-    StreamLogic.recentlyWentLive(s, now, settings.recentlyLiveWindow)
-
   // First poll seeds the set without sending notifications so we don't
   // flood the user with every stream that happens to be live at startup.
   private def seedOnce: IO[Unit] =
@@ -117,13 +114,10 @@ class StreamPoller(
         for
           streams <- withTokenRefresh(token => fetchLiveStreams(token, allCategories.map(_.id)))
           now <- IO(Instant.now())
-          recentStreams = streams.filter(recentlyWentLive(_, now))
           alreadyNotified <- notifiedStreamIds.get
-          newStreams = recentStreams.filter(s => !alreadyNotified.contains(s.id))
-          // Accumulate all seen stream IDs so that API pagination flicker
-          // between polls can never cause a re-notification.
-          _ <- notifiedStreamIds.set(alreadyNotified ++ streams.iterator.map(_.id).toSet)
-          _ <- IO.println(s"Poller: fetched ${streams.size} total streams across ${allCategories.size} categories, ${recentStreams.size} recently live, ${newStreams.size} new")
+          (newStreams, updatedNotified) = StreamLogic.findNewStreams(streams, alreadyNotified, now, settings.recentlyLiveWindow)
+          _ <- notifiedStreamIds.set(updatedNotified)
+          _ <- IO.println(s"Poller: fetched ${streams.size} total streams across ${allCategories.size} categories, ${newStreams.size} new")
           _ <- IO.whenA(newStreams.nonEmpty) {
             broadcastNotifications(newStreams.map(StreamLogic.toNotification))
           }

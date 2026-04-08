@@ -25,6 +25,22 @@ object StreamLogic:
       java.time.Duration.between(startedAt, now).toMillis < window.toMillis
     }
 
+  /** Given all fetched streams, return the ones that are newly live
+    * (recently started AND not already notified). Also returns the
+    * updated set of notified IDs (all seen stream IDs, not just new
+    * ones) to prevent re-notification from pagination flicker.
+    */
+  def findNewStreams(
+      allStreams: List[TwitchStream],
+      alreadyNotified: Set[String],
+      now: Instant,
+      recentWindow: FiniteDuration
+  ): (List[TwitchStream], Set[String]) =
+    val recentStreams = allStreams.filter(recentlyWentLive(_, now, recentWindow))
+    val newStreams = recentStreams.filter(s => !alreadyNotified.contains(s.id))
+    val updatedNotified = alreadyNotified ++ allStreams.iterator.map(_.id).toSet
+    (newStreams, updatedNotified)
+
   def applyTagFilters(
       notifications: List[StreamNotification],
       filters: List[TagFilter]
