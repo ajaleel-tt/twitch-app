@@ -25,16 +25,41 @@ The backend polls the Twitch API every 60 seconds and pushes updates to connecte
 
 1. Register an app on the [Twitch Developer Console](https://dev.twitch.tv/console) with redirect URL `http://localhost:8080/auth/callback`.
 
-2. Build the frontend and start the server:
-   ```sh
-   TWITCH_CLIENT_ID=your_client_id \
-   TWITCH_CLIENT_SECRET=your_client_secret \
-   sbt dev
-   ```
+2. Start the server using one of the options below, then open http://localhost:8080.
 
-3. Open http://localhost:8080.
+#### Option A: H2 (simplest, no setup)
 
-No Docker or PostgreSQL needed for local dev — the app falls back to an embedded H2 database automatically.
+No database to install — the app uses an embedded H2 file database automatically:
+
+```sh
+TWITCH_CLIENT_ID=your_client_id \
+TWITCH_CLIENT_SECRET=your_client_secret \
+sbt dev
+```
+
+Data is stored in `./twitch_app_db.mv.db` and persists across restarts.
+
+#### Option B: Local PostgreSQL
+
+To develop against the same database used in production:
+
+```sh
+# Start a Postgres container
+docker run -d --name pg-local \
+  -e POSTGRES_PASSWORD=test \
+  -e POSTGRES_DB=twitch_app \
+  -p 5432:5432 postgres:16
+
+# Start the app pointing at it
+TWITCH_CLIENT_ID=your_client_id \
+TWITCH_CLIENT_SECRET=your_client_secret \
+DATABASE_URL=jdbc:postgresql://localhost:5432/twitch_app \
+DATABASE_USER=postgres \
+DATABASE_PASS=test \
+sbt dev
+```
+
+Tables are created automatically on first startup. To stop and remove the container later: `docker stop pg-local && docker rm pg-local`.
 
 ### Environment Variables
 
