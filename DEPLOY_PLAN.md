@@ -13,10 +13,10 @@ The Twitch Stream Notifier is a working local app (Scala 3 / Http4s / Scala.js /
 **Files to modify:**
 - `build.sbt` — Replace `h2` and `doobie-h2` dependencies with `doobie-postgres` and `org.postgresql:postgresql` JDBC driver
 - `modules/backend/src/main/scala/com/twitch/backend/TwitchServer.scala`:
-  - Line 30: Change JDBC URL from `jdbc:h2:./twitch_app_db;MODE=PostgreSQL;...` to read a `DATABASE_URL` env var (e.g. `jdbc:postgresql://host:5432/twitch_app`)
-  - Lines 31-34: Replace `H2Transactor.newH2Transactor` with a Hikari-backed `HikariTransactor` via `doobie-hikari`. H2Transactor is H2-specific and won't work with Postgres. The Hikari pool also provides connection pooling needed for production.
-- `modules/backend/src/main/scala/com/twitch/backend/Database.scala` (line 14) — Change `MERGE INTO` to standard PostgreSQL `INSERT ... ON CONFLICT ... DO UPDATE` (the `follow` method, lines 28-33)
-- `modules/backend/src/main/scala/com/twitch/backend/Database.scala` (lines 11-19) — Verify `CREATE TABLE IF NOT EXISTS` syntax works as-is with Postgres (it should)
+  - Line 32: Change JDBC URL from `jdbc:h2:./twitch_app_db;MODE=PostgreSQL;...` to read a `DATABASE_URL` env var (e.g. `jdbc:postgresql://host:5432/twitch_app`)
+  - Lines 33-36: Replace `H2Transactor.newH2Transactor` with a Hikari-backed `HikariTransactor` via `doobie-hikari`. H2Transactor is H2-specific and won't work with Postgres. The Hikari pool also provides connection pooling needed for production.
+- `modules/backend/src/main/scala/com/twitch/backend/Database.scala` — Change `MERGE INTO` to standard PostgreSQL `INSERT ... ON CONFLICT ... DO UPDATE` in both the `follow` method (lines 39-42) and `addTagFilter` method (lines 62-66)
+- `modules/backend/src/main/scala/com/twitch/backend/Database.scala` (lines 12-29) — Verify `CREATE TABLE IF NOT EXISTS` syntax works as-is with Postgres (it should)
 
 **New env vars:** `DATABASE_URL` (full JDBC connection string, includes credentials)
 
@@ -24,13 +24,15 @@ The Twitch Stream Notifier is a working local app (Scala 3 / Http4s / Scala.js /
 
 ## Step 2: Externalize All Configuration
 
-**Why:** Host, port, redirect URI, and DB path are all hardcoded. A deployed app needs these to come from the environment so the same image works in dev, staging, and production.
+**Why:** Host, port, redirect URI, and DB path are still hardcoded. A deployed app needs these to come from the environment so the same image works in dev, staging, and production.
+
+**Already done:** Poller intervals, page sizes, and SSE reconnect delay are externalized in `application.conf` and loaded via `AppSettings` (AppSettings.scala). What remains is host, port, redirect URI, and database URL.
 
 **Files to modify:**
 - `modules/backend/src/main/scala/com/twitch/backend/TwitchServer.scala`:
   - Line 27: `redirectUri` — read from `BASE_URL` env var, construct as `${BASE_URL}/auth/callback` (default to `http://localhost:8080` for local dev)
-  - Line 30: DB URL — already handled in Step 1
-  - Lines 43-44: host/port — read `PORT` env var (many hosting platforms set this automatically), default to `8080`
+  - Line 32: DB URL — already handled in Step 1
+  - Lines 46-47: host/port — read `PORT` env var (many hosting platforms set this automatically), default to `8080`
 - `modules/frontend/src/main/scala/com/twitch/frontend/components/LoginSection.scala` (line 21):
   - The frontend currently navigates to `/auth/login` (a relative path), so the redirect URI is actually handled server-side already. No frontend change needed for the redirect URI itself.
 - `modules/core/src/main/scala/com/twitch/core/Models.scala` (line 39):
@@ -42,16 +44,16 @@ The Twitch Stream Notifier is a working local app (Scala 3 / Http4s / Scala.js /
 | `TWITCH_CLIENT_ID` | Yes | `vk4vfg8...` | Twitch OAuth app ID |
 | `TWITCH_CLIENT_SECRET` | Yes | `ztiknten...` | Twitch OAuth app secret |
 | `DATABASE_URL` | Yes | `jdbc:postgresql://localhost:5432/twitch_app` | Postgres connection |
-| `BASE_URL` | No | `https://myapp.fly.dev` | Public URL (default: `http://localhost:8080`) |
+| `BASE_URL` | No | `https://myapp.onrender.com` | Public URL (default: `http://localhost:8080`) |
 | `PORT` | No | `8080` | Server listen port (default: `8080`) |
 
 ---
 
 ## Step 3: Persist Sessions (with Twitch Token Management)
 
-**Why:** Sessions are stored in an in-memory `Ref[IO, Map[String, SessionData]]` (TwitchServer.scala line 40). A server restart loses all sessions, logging everyone out. In production, this is unacceptable.
+**Why:** Sessions are stored in an in-memory `Ref[IO, Map[String, SessionData]]` (TwitchServer.scala line 42). A server restart loses all sessions, logging everyone out. In production, this is unacceptable.
 
-**Important constraint:** The backend uses the user's Twitch access token to call the Twitch API on their behalf (e.g., `/api/search/categories` at Routes.scala line 130 passes `data.accessToken` to the Twitch Helix API). Any session solution **must** preserve the Twitch access token server-side — a client-only JWT carrying just user identity would break search and any other Twitch API proxy endpoints.
+**Important constraint:** The backend uses the user's Twitch access token to call the Twitch API on their behalf (e.g., `/api/search/categories` at Routes.scala line 132 passes `data.accessToken` to the Twitch Helix API). Any session solution **must** preserve the Twitch access token server-side — a client-only JWT carrying just user identity would break search and any other Twitch API proxy endpoints.
 
 ### Recommended: Store sessions in PostgreSQL with token refresh
 
@@ -66,7 +68,7 @@ The Twitch Stream Notifier is a working local app (Scala 3 / Http4s / Scala.js /
     created_at   TIMESTAMP DEFAULT NOW()
   );
   ```
-- Store `refresh_token` from the Twitch token response (`TwitchTokenResponse` already includes `refresh_token: Option[String]` and `expires_in: Int` — currently ignored in Routes.scala line 86)
+- Store `refresh_token` from the Twitch token response (`TwitchTokenResponse` already includes `refresh_token: Option[String]` and `expires_in: Int` — currently ignored in Routes.scala line 88)
 - Add `createSession`, `getSession`, `deleteSession` methods to `Database.scala`
 - Add token refresh logic: before making a Twitch API call, check if the token is near expiry; if so, use the refresh token to obtain a new access token and update the session row
 - Add a session TTL / expiry check (e.g. 30 days) and periodic cleanup
@@ -80,24 +82,24 @@ The Twitch Stream Notifier is a working local app (Scala 3 / Http4s / Scala.js /
 
 **Why:** Before going public, the OAuth flow and session cookies need production-grade security.
 
-**Cookie attributes** (Routes.scala line 87):
+**Cookie attributes** (Routes.scala line 88):
 - The session cookie currently sets `httpOnly = true` but is missing `Secure` and `SameSite` attributes
 - Add `secure = true` (ensures cookie is only sent over HTTPS) and `sameSite = SameSite.Lax` (prevents CSRF via cross-site requests)
 - Make `secure` conditional: off for `http://localhost` dev, on when `BASE_URL` starts with `https`
 
 **OAuth state parameter:**
-- Already implemented (Routes.scala lines 46-54, using `pendingOAuthStates` Ref) ✓
+- Already implemented (Routes.scala lines 46-50, using `pendingOAuthStates` Ref) ✓
 - Note: the `pendingOAuthStates` Ref is in-memory. Once sessions move to Postgres (Step 3), consider whether pending states should also be persisted, or if their short lifespan (seconds) makes in-memory acceptable. For single-instance deploy, in-memory is fine.
 
 ---
 
 ## Step 5: Dockerize the App
 
-**Why:** A Dockerfile lets you deploy to any container hosting platform (Fly.io, Railway, Render, AWS ECS, etc.) with a single `docker build && docker push`.
+**Why:** A Dockerfile lets you deploy to any container hosting platform (Render, Railway, AWS ECS, etc.) with a single `docker build && docker push`.
 
 **Key challenge:** The server currently serves frontend assets from source-tree paths:
-- `StaticFile.fromPath(fs2.io.file.Path("./modules/frontend/index.html"))` (TwitchServer.scala line 55)
-- `fileService[IO](FileService.Config("./modules/frontend"))` (TwitchServer.scala line 48)
+- `StaticFile.fromPath(fs2.io.file.Path("./modules/frontend/index.html"))` (TwitchServer.scala line 57)
+- `fileService[IO](FileService.Config("./modules/frontend"))` (TwitchServer.scala line 50)
 - `index.html` hardcodes `<script src="target/scala-3.6.3/frontend-fastopt/main.js">` (the dev-mode Scala.js output)
 
 The Docker image must either:
@@ -146,7 +148,7 @@ Option B is cleaner. This means:
 | DigitalOcean | Most mature UI, but $20-25/month minimum (Postgres alone is $15/month) |
 
 **Initial deployment is single-instance.** This is important because:
-- The `StreamPoller` runs inside the app process (TwitchServer.scala line 63). Every instance would create its own poller, multiplying Twitch API calls. For a single-instance deploy, this is fine.
+- The `StreamPoller` runs inside the app process (TwitchServer.scala line 65). Every instance would create its own poller, multiplying Twitch API calls. For a single-instance deploy, this is fine.
 - In-memory structures (`pendingOAuthStates`, `notificationQueues`) are not shared across instances
 - If horizontal scaling is needed later, the poller should be extracted to a separate process or use a leader-election mechanism, and notification delivery should use a pub-sub system (e.g., Redis, Postgres LISTEN/NOTIFY)
 
