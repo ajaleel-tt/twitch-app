@@ -8,7 +8,7 @@ A web app that sends you browser notifications when Twitch streams go live in ca
 2. Search for and follow game/category pages you're interested in.
 3. Leave the tab open — you'll get a browser notification whenever a new stream goes live in any of your followed categories.
 
-The backend polls the Twitch API every 60 seconds and pushes updates to connected clients via Server-Sent Events (SSE). Followed categories are persisted in an embedded H2 database, so they survive server restarts.
+The backend polls the Twitch API every 60 seconds and pushes updates to connected clients via Server-Sent Events (SSE). Followed categories and sessions are persisted in a database, so they survive server restarts.
 
 ### Project Structure
 
@@ -29,10 +29,36 @@ The backend polls the Twitch API every 60 seconds and pushes updates to connecte
    ```sh
    TWITCH_CLIENT_ID=your_client_id \
    TWITCH_CLIENT_SECRET=your_client_secret \
-   sbt "frontend/fastLinkJS" "backend/run"
+   sbt dev
    ```
 
 3. Open http://localhost:8080.
+
+No Docker or PostgreSQL needed for local dev — the app falls back to an embedded H2 database automatically.
+
+### Environment Variables
+
+| Variable | Required | Default | Purpose |
+|----------|----------|---------|---------|
+| `TWITCH_CLIENT_ID` | Yes | — | Twitch OAuth app ID |
+| `TWITCH_CLIENT_SECRET` | Yes | — | Twitch OAuth app secret |
+| `DATABASE_URL` | No | H2 file DB | JDBC connection string (e.g. `jdbc:postgresql://host:5432/db`) |
+| `DATABASE_USER` | No | — | DB username (if not embedded in URL) |
+| `DATABASE_PASS` | No | — | DB password (if not embedded in URL) |
+| `BASE_URL` | No | `http://localhost:8080` | Public URL (sets redirect URI and cookie security) |
+| `PORT` | No | `8080` | Server listen port |
+| `STATIC_DIR` | No | `./modules/frontend` | Path to static assets directory |
+
+### Running with Docker
+
+```sh
+docker build -t twitch-notifier .
+docker run -p 8080:8080 \
+  -e TWITCH_CLIENT_ID=your_client_id \
+  -e TWITCH_CLIENT_SECRET=your_client_secret \
+  -e DATABASE_URL=jdbc:postgresql://host:5432/twitch_app \
+  twitch-notifier
+```
 
 ### Tech Stack
 
@@ -40,5 +66,5 @@ The backend polls the Twitch API every 60 seconds and pushes updates to connecte
 - **Http4s** for the backend HTTP server and API
 - **Calico** (Scala.js) for the reactive frontend
 - **Scalawind** + **Tailwind CSS** for styling
-- **Doobie** + **H2** for persistence
+- **Doobie** + **PostgreSQL** for production persistence (H2 for local dev)
 - **Circe** for JSON serialization
