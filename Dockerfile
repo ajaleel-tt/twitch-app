@@ -26,7 +26,7 @@ RUN sbt frontend/fullLinkJS backend/assembly
 RUN mkdir -p /app/static && \
     cp modules/frontend/target/scala-3.6.3/frontend-opt/main.js /app/static/main.js && \
     cp modules/frontend/dist/output.css /app/static/output.css && \
-    sed 's|target/scala-3.6.3/frontend-fastopt/main.js|main.js|' modules/frontend/index.html > /app/static/index.html
+    sed -e 's|target/scala-3.6.3/frontend-fastopt/main.js|main.js|' -e 's|dist/output.css|output.css|' modules/frontend/index.html > /app/static/index.html
 
 # ── Run stage ──────────────────────────────────────────────────────
 FROM eclipse-temurin:21-jre

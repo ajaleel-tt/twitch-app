@@ -12,6 +12,7 @@ import org.http4s.server.middleware.CORS
 import org.http4s.server.staticcontent.*
 import doobie.h2.H2Transactor
 import doobie.hikari.HikariTransactor
+import com.zaxxer.hikari.HikariConfig
 import cats.effect.std.Queue
 import com.twitch.core.StreamNotification
 
@@ -38,13 +39,14 @@ object TwitchServer extends IOApp.Simple:
 
     val transactorResource: Resource[IO, doobie.Transactor[IO]] =
       if isPostgres then
-        HikariTransactor.newHikariTransactor[IO](
-          driverClassName = "org.postgresql.Driver",
-          url = dbUrl,
-          user = sys.env.getOrElse("DATABASE_USER", ""),
-          pass = sys.env.getOrElse("DATABASE_PASS", ""),
-          connectEC = scala.concurrent.ExecutionContext.global
-        )
+        val hikariConfig = new HikariConfig()
+        hikariConfig.setDriverClassName("org.postgresql.Driver")
+        hikariConfig.setJdbcUrl(dbUrl)
+        // If DATABASE_USER/DATABASE_PASS are set, use them explicitly.
+        // Otherwise let HikariCP parse credentials from the JDBC URL.
+        sys.env.get("DATABASE_USER").foreach(hikariConfig.setUsername)
+        sys.env.get("DATABASE_PASS").foreach(hikariConfig.setPassword)
+        HikariTransactor.fromHikariConfig[IO](hikariConfig)
       else
         for {
           ec <- Resource.eval(IO.executionContext)
