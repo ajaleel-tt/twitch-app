@@ -55,14 +55,13 @@ object TwitchServer extends IOApp.Simple:
       val db = new Database(xa, dialect)
       for {
         _ <- db.initDb
-        userSession <- IO.ref[Map[String, SessionData]](Map.empty)
         pendingOAuthStates <- IO.ref(Set.empty[String])
         notificationQueues <- IO.ref(Map.empty[String, (String, Queue[IO, StreamNotification])])
         _ <- EmberClientBuilder.default[IO].build.use { client =>
           val host = host"0.0.0.0"
           val port = Port.fromInt(sys.env.getOrElse("PORT", "8080").toInt).getOrElse(port"8080")
 
-          val routes = new Routes(clientId, clientSecret, redirectUri, client, userSession, pendingOAuthStates, db, notificationQueues, settings)
+          val routes = new Routes(clientId, clientSecret, redirectUri, client, pendingOAuthStates, db, notificationQueues, settings)
           val frontendService = fileService[IO](FileService.Config("./modules/frontend"))
 
           val httpApp = Router(

@@ -53,7 +53,6 @@ class RoutesSpec extends CatsEffectSuite:
   case class TestEnv(
       routes: Routes,
       db: Database,
-      userSession: Ref[IO, Map[String, SessionData]],
       pendingOAuthStates: Ref[IO, Set[String]],
       notificationQueues: Ref[IO, Map[String, (String, Queue[IO, StreamNotification])]]
   )
@@ -68,7 +67,6 @@ class RoutesSpec extends CatsEffectSuite:
       )
       db = new Database(xa)
       _ <- Resource.eval(db.initDb)
-      userSession <- Resource.eval(IO.ref(Map.empty[String, SessionData]))
       pendingStates <- Resource.eval(IO.ref(Set.empty[String]))
       notifQueues <- Resource.eval(IO.ref(Map.empty[String, (String, Queue[IO, StreamNotification])]))
       routes = new Routes(
@@ -76,13 +74,12 @@ class RoutesSpec extends CatsEffectSuite:
         clientSecret = "test-client-secret",
         redirectUri = "http://localhost:8080/auth/callback",
         client = stubClient,
-        userSession = userSession,
         pendingOAuthStates = pendingStates,
         db = db,
         notificationQueues = notifQueues,
         settings = testSettings
       )
-    yield TestEnv(routes, db, userSession, pendingStates, notifQueues)
+    yield TestEnv(routes, db, pendingStates, notifQueues)
   )
 
   override def munitFixtures = List(envFixture)
@@ -95,7 +92,7 @@ class RoutesSpec extends CatsEffectSuite:
   // Helper: create a session and return the cookie value
   private def createSession: IO[String] =
     val sessionId = java.util.UUID.randomUUID().toString
-    env.userSession.update(_ + (sessionId -> SessionData(testUser, "test-token"))) *>
+    env.db.createSession(sessionId, testUser, "test-token", None, None) *>
       IO.pure(sessionId)
 
   // Helper: build request with session cookie
@@ -206,12 +203,12 @@ class RoutesSpec extends CatsEffectSuite:
       pendingStates <- env.pendingOAuthStates.get
       state = pendingStates.head
       callbackResp <- authApp.run(Request[IO](Method.GET, Uri.unsafeFromString(s"/auth/callback?code=test-code&state=$state")))
-      sessions <- env.userSession.get
+      setCookie = callbackResp.cookies.find(_.name == "session_id")
+      sessionRow <- setCookie.traverse(c => env.db.getSession(c.content))
     yield {
       assertEquals(callbackResp.status, Status.Found)
-      val setCookie = callbackResp.cookies.find(_.name == "session_id")
       assert(setCookie.isDefined, "Expected session_id cookie")
-      assert(sessions.values.exists(_.user.id == "user1"), "Expected session with test user")
+      assert(sessionRow.flatten.exists(_.userId == "user1"), "Expected session with test user in DB")
     }
   }
 

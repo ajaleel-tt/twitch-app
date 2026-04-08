@@ -4,7 +4,8 @@ import cats.effect.*
 import cats.syntax.all.*
 import doobie.*
 import doobie.implicits.*
-import com.twitch.core.{TwitchCategory, TagFilter}
+import com.twitch.core.{TwitchCategory, TwitchUser, TagFilter}
+import java.time.Instant
 
 enum SqlDialect:
   case H2, Postgres
@@ -29,7 +30,20 @@ class Database(xa: Transactor[IO], dialect: SqlDialect = SqlDialect.H2):
         PRIMARY KEY (user_id, filter_type, tag)
       )
     """.update.run
-    (createFollowed *> createTagFilters).transact(xa).void
+    val createSessions = sql"""
+      CREATE TABLE IF NOT EXISTS sessions (
+        session_id VARCHAR PRIMARY KEY,
+        user_id VARCHAR NOT NULL,
+        user_login VARCHAR NOT NULL,
+        display_name VARCHAR NOT NULL,
+        profile_image_url VARCHAR NOT NULL,
+        access_token VARCHAR NOT NULL,
+        refresh_token VARCHAR,
+        token_expires_at BIGINT,
+        created_at BIGINT NOT NULL
+      )
+    """.update.run
+    (createFollowed *> createTagFilters *> createSessions).transact(xa).void
 
   def getFollowed(userId: String): IO[List[TwitchCategory]] =
     sql"SELECT category_id, name, box_art_url FROM followed_categories WHERE user_id = $userId"
@@ -90,3 +104,49 @@ class Database(xa: Transactor[IO], dialect: SqlDialect = SqlDialect.H2):
     val normalizedTag = tag.trim.toLowerCase
     sql"DELETE FROM tag_filters WHERE user_id = $userId AND filter_type = $filterType AND tag = $normalizedTag"
       .update.run.transact(xa).void
+
+  // ── Session persistence ─────────────────────────────────────────────
+
+  def createSession(
+      sessionId: String,
+      user: TwitchUser,
+      accessToken: String,
+      refreshToken: Option[String],
+      tokenExpiresAt: Option[Instant]
+  ): IO[Unit] =
+    val now = Instant.now().getEpochSecond
+    val expiresAt = tokenExpiresAt.map(_.getEpochSecond)
+    sql"""
+      INSERT INTO sessions (session_id, user_id, user_login, display_name, profile_image_url, access_token, refresh_token, token_expires_at, created_at)
+      VALUES ($sessionId, ${user.id}, ${user.login}, ${user.display_name}, ${user.profile_image_url}, $accessToken, $refreshToken, $expiresAt, $now)
+    """.update.run.transact(xa).void
+
+  def getSession(sessionId: String): IO[Option[SessionRow]] =
+    sql"""
+      SELECT session_id, user_id, user_login, display_name, profile_image_url, access_token, refresh_token, token_expires_at, created_at
+      FROM sessions WHERE session_id = $sessionId
+    """.query[SessionRow].option.transact(xa)
+
+  def updateSessionToken(sessionId: String, accessToken: String, refreshToken: Option[String], tokenExpiresAt: Option[Instant]): IO[Unit] =
+    val expiresAt = tokenExpiresAt.map(_.getEpochSecond)
+    sql"""
+      UPDATE sessions SET access_token = $accessToken, refresh_token = $refreshToken, token_expires_at = $expiresAt
+      WHERE session_id = $sessionId
+    """.update.run.transact(xa).void
+
+  def deleteSession(sessionId: String): IO[Unit] =
+    sql"DELETE FROM sessions WHERE session_id = $sessionId"
+      .update.run.transact(xa).void
+
+case class SessionRow(
+    sessionId: String,
+    userId: String,
+    userLogin: String,
+    displayName: String,
+    profileImageUrl: String,
+    accessToken: String,
+    refreshToken: Option[String],
+    tokenExpiresAt: Option[Long],
+    createdAt: Long
+):
+  def toUser: TwitchUser = TwitchUser(userId, userLogin, displayName, profileImageUrl)

@@ -11,13 +11,17 @@ import org.http4s.implicits.*
 import org.http4s.headers.{Authorization, Location}
 import org.typelevel.ci.*
 import java.util.UUID
+import java.time.Instant
 import cats.effect.std.Queue
 import io.circe.syntax.*
 import com.twitch.core.*
 
 case class SessionData(
     user: TwitchUser,
-    accessToken: String
+    accessToken: String,
+    refreshToken: Option[String],
+    tokenExpiresAt: Option[Long],
+    sessionId: String
 )
 
 class Routes(
@@ -25,17 +29,47 @@ class Routes(
     clientSecret: String,
     redirectUri: String,
     client: Client[IO],
-    userSession: Ref[IO, Map[String, SessionData]],
     pendingOAuthStates: Ref[IO, Set[String]],
     db: Database,
     notificationQueues: Ref[IO, Map[String, (String, Queue[IO, StreamNotification])]],
     settings: AppSettings
 ):
 
-  private def getSession(req: Request[IO]): IO[Option[SessionData]] = {
-    val sessionId = req.cookies.find(_.name == "session_id").map(_.content)
-    sessionId.fold(IO.pure(None: Option[SessionData]))(id => userSession.get.map(_.get(id)))
-  }
+  private def getSession(req: Request[IO]): IO[Option[SessionData]] =
+    req.cookies.find(_.name == "session_id").map(_.content) match
+      case None => IO.pure(None)
+      case Some(sid) =>
+        db.getSession(sid).map(_.map(row =>
+          SessionData(row.toUser, row.accessToken, row.refreshToken, row.tokenExpiresAt, row.sessionId)
+        ))
+
+  private def refreshTokenIfNeeded(data: SessionData): IO[SessionData] =
+    val needsRefresh = data.tokenExpiresAt.exists { expiresAt =>
+      Instant.now().getEpochSecond >= expiresAt - 300 // refresh 5 min before expiry
+    }
+    if !needsRefresh || data.refreshToken.isEmpty then IO.pure(data)
+    else
+      val req = Request[IO](method = Method.POST, uri = uri"https://id.twitch.tv/oauth2/token").withEntity(
+        UrlForm(
+          "client_id" -> clientId,
+          "client_secret" -> clientSecret,
+          "grant_type" -> "refresh_token",
+          "refresh_token" -> data.refreshToken.get
+        )
+      )
+      client.run(req).use { resp =>
+        if resp.status.isSuccess then
+          resp.as[TwitchTokenResponse].flatMap { tokenResp =>
+            val expiresAt = Some(Instant.now().plusSeconds(tokenResp.expires_in.toLong))
+            db.updateSessionToken(data.sessionId, tokenResp.access_token, tokenResp.refresh_token.orElse(data.refreshToken), expiresAt) *>
+              IO.pure(data.copy(
+                accessToken = tokenResp.access_token,
+                refreshToken = tokenResp.refresh_token.orElse(data.refreshToken),
+                tokenExpiresAt = expiresAt.map(_.getEpochSecond)
+              ))
+          }
+        else IO.pure(data) // if refresh fails, try with existing token
+      }
 
   private object CodeQueryParamMatcher extends QueryParamDecoderMatcher[String]("code")
   private object StateQueryParamMatcher extends QueryParamDecoderMatcher[String]("state")
@@ -84,7 +118,8 @@ class Routes(
         user = userResponse.data.head
         _ <- IO.println(s"Found user: ${user.display_name}")
         sessionId = UUID.randomUUID().toString
-        _ <- userSession.update(_ + (sessionId -> SessionData(user, tokenResponse.access_token)))
+        tokenExpiresAt = Some(Instant.now().plusSeconds(tokenResponse.expires_in.toLong))
+        _ <- db.createSession(sessionId, user, tokenResponse.access_token, tokenResponse.refresh_token, tokenExpiresAt)
         res <- Found(Location(uri"/")).map(_.addCookie(ResponseCookie("session_id", sessionId, path = Some("/"), httpOnly = true)))
       } yield res
 
@@ -125,21 +160,23 @@ class Routes(
     case req @ GET -> Root / "search" / "categories" :? SearchQueryParamMatcher(query) +& AfterQueryParamMatcher(after) =>
       getSession(req).flatMap {
         case Some(data) =>
-          val uri = uri"https://api.twitch.tv/helix/search/categories"
-            .withQueryParam("query", query)
-            .withQueryParam("first", settings.searchPageSize.toString)
-            .withOptionQueryParam("after", after)
-          val searchReq = Request[IO](method = Method.GET, uri = uri).putHeaders(
-            Authorization(Credentials.Token(AuthScheme.Bearer, data.accessToken)),
-            Header.Raw(ci"Client-Id", clientId)
-          )
-          client.expect[TwitchSearchCategoriesResponse](searchReq).flatMap(Ok(_))
+          refreshTokenIfNeeded(data).flatMap { refreshed =>
+            val uri = uri"https://api.twitch.tv/helix/search/categories"
+              .withQueryParam("query", query)
+              .withQueryParam("first", settings.searchPageSize.toString)
+              .withOptionQueryParam("after", after)
+            val searchReq = Request[IO](method = Method.GET, uri = uri).putHeaders(
+              Authorization(Credentials.Token(AuthScheme.Bearer, refreshed.accessToken)),
+              Header.Raw(ci"Client-Id", clientId)
+            )
+            client.expect[TwitchSearchCategoriesResponse](searchReq).flatMap(Ok(_))
+          }
         case None => Forbidden("Not logged in")
       }
     case req @ POST -> Root / "logout" =>
       val sessionId = req.cookies.find(_.name == "session_id").map(_.content)
       for {
-        _ <- sessionId.fold(IO.unit)(id => userSession.update(_ - id))
+        _ <- sessionId.fold(IO.unit)(id => db.deleteSession(id))
         res <- Ok("Logged out").map(_.removeCookie("session_id"))
       } yield res
     case req @ GET -> Root / "tag-filters" =>
