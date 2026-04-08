@@ -127,6 +127,62 @@ Option B is cleaner. This means:
 
 ---
 
+## Step 5b: Add Docker Build to GitHub Actions
+
+**Why:** Catch Dockerfile issues (broken `COPY` paths, missing build dependencies, failed `sbt assembly`) in CI before they reach Render. This also validates that the multi-stage build produces a working image on every push.
+
+**Files to modify:**
+- `.github/workflows/ci.yml` — Add a new job that builds the Docker image after the existing `build-and-test` job passes. This keeps the fast compile+test feedback loop separate from the slower Docker build.
+
+**What the new job does:**
+1. Check out the repo
+2. Use `docker/setup-buildx-action` for layer caching (speeds up repeat builds)
+3. Run `docker build .` — this exercises the full multi-stage build (sbt compile, fullLinkJS, assembly, asset copying)
+4. Does **not** push the image anywhere — Render handles that on deploy. This is a build-only validation step.
+
+**Example workflow addition:**
+```yaml
+  docker-build:
+    runs-on: ubuntu-latest
+    needs: build-and-test
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+```
+
+**Key details:**
+- `needs: build-and-test` — the Docker build only runs if compile + tests pass, so you don't waste CI minutes on a broken build
+- `cache-from/cache-to: type=gha` — uses GitHub Actions' built-in cache for Docker layers, so unchanged layers (JDK base image, sbt dependencies) are reused across runs
+- `push: false` — we only validate the build, we don't push to a registry
+- The path filter in the workflow should be updated to also trigger on `Dockerfile` and `.dockerignore` changes
+
+**Path filter update for `.github/workflows/ci.yml`:**
+```yaml
+paths:
+  - '**.scala'
+  - '**.sbt'
+  - 'project/**'
+  - 'package.json'
+  - 'package-lock.json'
+  - 'Dockerfile'
+  - '.dockerignore'
+  - '.github/workflows/**'
+```
+
+**When to implement:** After the Dockerfile is created in Step 5. The CI job references the Dockerfile, so it can't be added until the Dockerfile exists.
+
+---
+
 ## Step 6: Deploy
 
 **Why:** This is the actual "make it real" step.
