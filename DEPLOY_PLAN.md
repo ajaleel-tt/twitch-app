@@ -129,7 +129,21 @@ Option B is cleaner. This means:
 
 **Why:** This is the actual "make it real" step.
 
-**Recommended platform: Fly.io** (simple, supports Docker, has managed Postgres, free tier)
+**Recommended platform: Render** (~$13/month for web service + managed Postgres)
+
+**Why Render over alternatives:**
+- **GUI-first:** Clean dashboard for deploys, logs, env vars, and scaling — no CLI required
+- **Managed Postgres:** $6/month Basic tier includes automated daily backups and point-in-time recovery
+- **Custom domains:** Free, simple DNS setup, automatic SSL certificate provisioning
+- **Support:** Email-ticketed support on the base paid tier (not just community forums)
+- **Pricing:** $7/month Starter web service + $6/month Postgres = ~$13/month total
+
+**Alternatives considered:**
+| Platform | Why not |
+|---|---|
+| Fly.io | CLI-first (sparse dashboard), managed Postgres starts at $38/month |
+| Railway | Best UI, cheapest (~$8-12), but Postgres is self-hosted (no automated backups/failover) |
+| DigitalOcean | Most mature UI, but $20-25/month minimum (Postgres alone is $15/month) |
 
 **Initial deployment is single-instance.** This is important because:
 - The `StreamPoller` runs inside the app process (TwitchServer.scala line 63). Every instance would create its own poller, multiplying Twitch API calls. For a single-instance deploy, this is fine.
@@ -137,15 +151,18 @@ Option B is cleaner. This means:
 - If horizontal scaling is needed later, the poller should be extracted to a separate process or use a leader-election mechanism, and notification delivery should use a pub-sub system (e.g., Redis, Postgres LISTEN/NOTIFY)
 
 **Steps:**
-1. Install `flyctl` CLI
-2. `fly launch` — creates app, generates `fly.toml`
-3. `fly postgres create` — provision a managed Postgres instance
-4. `fly postgres attach` — sets `DATABASE_URL` automatically
-5. Set secrets: `fly secrets set TWITCH_CLIENT_ID=... TWITCH_CLIENT_SECRET=... BASE_URL=https://<app-name>.fly.dev`
-6. Update Twitch Developer Console: add `https://<app-name>.fly.dev/auth/callback` as an allowed redirect URI
-7. `fly deploy` — builds Docker image, deploys
-
-**Alternative platforms:** Railway, Render, DigitalOcean App Platform, or a plain VPS with Docker.
+1. Sign up at render.com, create a new **Web Service** and connect the GitHub repo
+2. Set the build command to build the Docker image (Render auto-detects the Dockerfile)
+3. Create a new **PostgreSQL** database (Basic tier, $6/month)
+4. In the web service's Environment settings, add:
+   - `DATABASE_URL` — copy the Internal Connection String from the Postgres dashboard
+   - `TWITCH_CLIENT_ID` — your Twitch app client ID
+   - `TWITCH_CLIENT_SECRET` — your Twitch app secret
+   - `BASE_URL` — `https://<app-name>.onrender.com` (or your custom domain)
+   - `PORT` — `8080` (or whatever Render assigns via `$PORT`)
+5. Add your custom domain in the Render dashboard under Settings > Custom Domains. Add a CNAME record pointing to `<app-name>.onrender.com`. SSL is provisioned automatically.
+6. Update Twitch Developer Console: add `https://<your-domain>/auth/callback` as an allowed redirect URI
+7. Deploy — Render builds from the Dockerfile on every push to `master`
 
 ---
 
@@ -171,4 +188,4 @@ After each step, verify:
 3. **Step 3:** Log in, restart the server, confirm you're still logged in. Verify search still works (Twitch token is preserved). Wait for token expiry and confirm refresh works.
 4. **Step 4:** Verify cookies have `Secure` and `SameSite` attributes when accessed over HTTPS. Confirm OAuth state validation still works.
 5. **Step 5:** `docker build` succeeds. `docker run` with env vars starts the app and serves the frontend correctly (JS loads, CSS loads, app is interactive).
-6. **Step 6:** Visit `https://<app-name>.fly.dev`, log in with Twitch, follow categories, receive notifications.
+6. **Step 6:** Visit `https://<your-domain>` (or `https://<app-name>.onrender.com`), log in with Twitch, follow categories, receive notifications.
