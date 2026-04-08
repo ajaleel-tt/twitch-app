@@ -25,7 +25,8 @@ object TwitchServer extends IOApp.Simple:
     System.err.println("ERROR: TWITCH_CLIENT_SECRET environment variable is not set")
     sys.exit(1)
   })
-  private val redirectUri = "http://localhost:8080/auth/callback"
+  private val baseUrl = sys.env.getOrElse("BASE_URL", "http://localhost:8080")
+  private val redirectUri = s"$baseUrl/auth/callback"
 
   private val settings = AppSettings.load
 
@@ -59,7 +60,7 @@ object TwitchServer extends IOApp.Simple:
         notificationQueues <- IO.ref(Map.empty[String, (String, Queue[IO, StreamNotification])])
         _ <- EmberClientBuilder.default[IO].build.use { client =>
           val host = host"0.0.0.0"
-          val port = port"8080"
+          val port = Port.fromInt(sys.env.getOrElse("PORT", "8080").toInt).getOrElse(port"8080")
 
           val routes = new Routes(clientId, clientSecret, redirectUri, client, userSession, pendingOAuthStates, db, notificationQueues, settings)
           val frontendService = fileService[IO](FileService.Config("./modules/frontend"))
@@ -80,7 +81,7 @@ object TwitchServer extends IOApp.Simple:
             poller <- StreamPoller.make(clientId, clientSecret, client, db, notificationQueues, settings)
             _ <- (
               poller.start.void,
-              IO.println(s"Server started at http://localhost:$port") *>
+              IO.println(s"Server started at $baseUrl") *>
                 EmberServerBuilder
                   .default[IO]
                   .withHost(host)
