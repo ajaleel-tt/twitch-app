@@ -28,7 +28,8 @@ class Routes(
     userSession: Ref[IO, Map[String, SessionData]],
     pendingOAuthStates: Ref[IO, Set[String]],
     db: Database,
-    notificationQueues: Ref[IO, Map[String, (String, Queue[IO, StreamNotification])]]
+    notificationQueues: Ref[IO, Map[String, (String, Queue[IO, StreamNotification])]],
+    settings: AppSettings
 ):
 
   private def getSession(req: Request[IO]): IO[Option[SessionData]] = {
@@ -126,6 +127,7 @@ class Routes(
         case Some(data) =>
           val uri = uri"https://api.twitch.tv/helix/search/categories"
             .withQueryParam("query", query)
+            .withQueryParam("first", settings.searchPageSize.toString)
             .withOptionQueryParam("after", after)
           val searchReq = Request[IO](method = Method.GET, uri = uri).putHeaders(
             Authorization(Credentials.Token(AuthScheme.Bearer, data.accessToken)),

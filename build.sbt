@@ -128,7 +128,8 @@ lazy val backend = project.in(file("modules/backend"))
       "org.tpolecat"  %% "doobie-core"         % "1.0.0-RC8",
       "org.tpolecat"  %% "doobie-h2"           % "1.0.0-RC8",
       "org.tpolecat"  %% "doobie-hikari"       % "1.0.0-RC8",
-      "com.h2database" % "h2"                  % "2.3.232"
+      "com.h2database" % "h2"                  % "2.3.232",
+      "com.typesafe"   % "config"              % "1.4.3"
     )
   )
 

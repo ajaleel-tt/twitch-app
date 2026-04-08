@@ -12,7 +12,7 @@ case class Model(
     followedCategories: List[TwitchCategory] = Nil,
     paginationCursor: Option[String] = None,
     currentPage: Int = 0,
-    pageSize: Int = 5,
+    pageSize: Int = Defaults.SearchPageSize,
     notifications: List[StreamNotification] = Nil,
     tagFilters: List[TagFilter] = Nil,
     newIncludeTag: String = "",

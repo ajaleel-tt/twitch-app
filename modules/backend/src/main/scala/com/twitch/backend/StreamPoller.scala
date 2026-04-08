@@ -10,7 +10,6 @@ import org.http4s.circe.CirceEntityDecoder.*
 import org.http4s.headers.Authorization
 import org.http4s.implicits.*
 import org.typelevel.ci.*
-import scala.concurrent.duration.*
 import java.time.Instant
 import com.twitch.core.*
 
@@ -21,7 +20,8 @@ class StreamPoller(
     db: Database,
     notificationQueues: Ref[IO, Map[String, (String, Queue[IO, StreamNotification])]],
     appToken: Ref[IO, Option[String]],
-    notifiedStreamIds: Ref[IO, Set[String]]
+    notifiedStreamIds: Ref[IO, Set[String]],
+    settings: AppSettings
 ):
 
   private def fetchAppToken: IO[String] =
@@ -55,7 +55,7 @@ class StreamPoller(
   private def fetchStreamsPage(token: String, categoryId: String, cursor: Option[String]): IO[TwitchStreamsResponse] =
     val baseUri = uri"https://api.twitch.tv/helix/streams"
       .withQueryParam("game_id", categoryId)
-      .withQueryParam("first", "100")
+      .withQueryParam("first", settings.streamsPageSize.toString)
     val uriWithCursor = cursor.fold(baseUri)(c => baseUri.withQueryParam("after", c))
     val req = Request[IO](method = Method.GET, uri = uriWithCursor).putHeaders(
       Authorization(Credentials.Token(AuthScheme.Bearer, token)),
@@ -64,7 +64,7 @@ class StreamPoller(
     client.expect[TwitchStreamsResponse](req)
 
   private def fetchLiveStreams(token: String, categoryIds: List[String]): IO[List[TwitchStream]] =
-    categoryIds.parTraverseN(5) { categoryId =>
+    categoryIds.parTraverseN(settings.parallelCategories) { categoryId =>
       def go(cursor: Option[String], acc: List[TwitchStream]): IO[List[TwitchStream]] =
         fetchStreamsPage(token, categoryId, cursor).flatMap { resp =>
           val newAcc = resp.data.reverse ::: acc
@@ -121,7 +121,7 @@ class StreamPoller(
   private def recentlyWentLive(s: TwitchStream, now: Instant): Boolean =
     s.`type` == "live" && {
       val startedAt = Instant.parse(s.started_at)
-      java.time.Duration.between(startedAt, now).toMinutes < 5
+      java.time.Duration.between(startedAt, now).toMillis < settings.recentlyLiveWindow.toMillis
     }
 
   // First poll seeds the set without sending notifications so we don't
@@ -161,9 +161,9 @@ class StreamPoller(
     yield ()
 
   def start: IO[Nothing] =
-    IO.println("StreamPoller: starting (polling every 60s)") *>
+    IO.println(s"StreamPoller: starting (polling every ${settings.pollerInterval.toSeconds}s)") *>
       seedOnce.handleErrorWith(e => IO.println(s"StreamPoller seed error: $e")) *>
-      (IO.sleep(60.seconds) *> pollOnce.handleErrorWith(e => IO.println(s"StreamPoller error: $e"))).foreverM
+      (IO.sleep(settings.pollerInterval) *> pollOnce.handleErrorWith(e => IO.println(s"StreamPoller error: $e"))).foreverM
 
 object StreamPoller:
   def make(
@@ -171,9 +171,10 @@ object StreamPoller:
       clientSecret: String,
       client: Client[IO],
       db: Database,
-      notificationQueues: Ref[IO, Map[String, (String, Queue[IO, StreamNotification])]]
+      notificationQueues: Ref[IO, Map[String, (String, Queue[IO, StreamNotification])]],
+      settings: AppSettings
   ): IO[StreamPoller] =
     for
       tokenRef <- IO.ref(Option.empty[String])
       notifiedRef <- IO.ref(Set.empty[String])
-    yield new StreamPoller(clientId, clientSecret, client, db, notificationQueues, tokenRef, notifiedRef)
+    yield new StreamPoller(clientId, clientSecret, client, db, notificationQueues, tokenRef, notifiedRef, settings)

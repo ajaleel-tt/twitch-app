@@ -26,6 +26,8 @@ object TwitchServer extends IOApp.Simple:
   })
   private val redirectUri = "http://localhost:8080/auth/callback"
 
+  private val settings = AppSettings.load
+
   def run: IO[Unit] =
     val dbUrl = "jdbc:h2:./twitch_app_db;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE"
     val transactorResource = for {
@@ -44,7 +46,7 @@ object TwitchServer extends IOApp.Simple:
           val host = host"0.0.0.0"
           val port = port"8080"
 
-          val routes = new Routes(clientId, clientSecret, redirectUri, client, userSession, pendingOAuthStates, db, notificationQueues)
+          val routes = new Routes(clientId, clientSecret, redirectUri, client, userSession, pendingOAuthStates, db, notificationQueues, settings)
           val frontendService = fileService[IO](FileService.Config("./modules/frontend"))
 
           val httpApp = Router(
@@ -60,7 +62,7 @@ object TwitchServer extends IOApp.Simple:
           val corsApp = CORS.policy.withAllowOriginAll(httpApp)
 
           for
-            poller <- StreamPoller.make(clientId, clientSecret, client, db, notificationQueues)
+            poller <- StreamPoller.make(clientId, clientSecret, client, db, notificationQueues, settings)
             _ <- (
               poller.start.void,
               IO.println(s"Server started at http://localhost:$port") *>
