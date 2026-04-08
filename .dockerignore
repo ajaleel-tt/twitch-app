@@ -1,0 +1,9 @@
+.bsp/
+target/
+node_modules/
+.idea/
+*.mv.db
+*.trace.db
+.git/
+.github/
+.claude/

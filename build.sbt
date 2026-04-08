@@ -134,7 +134,15 @@ lazy val backend = project.in(file("modules/backend"))
       "com.typesafe"   % "config"              % "1.4.3",
       "org.scalameta"  %% "munit"              % "1.0.0"  % Test,
       "org.typelevel"  %% "munit-cats-effect"  % "2.0.0"  % Test
-    )
+    ),
+    assembly / mainClass := Some("com.twitch.backend.TwitchServer"),
+    assembly / assemblyJarName := "twitch-app.jar",
+    assembly / assemblyMergeStrategy := {
+      case PathList("META-INF", "services", _*) => MergeStrategy.concat
+      case PathList("META-INF", _*) => MergeStrategy.discard
+      case "module-info.class" => MergeStrategy.discard
+      case x => MergeStrategy.first
+    }
   )
 
 // ── Convenience command alias ──────────────────────────────────────

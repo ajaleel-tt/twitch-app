@@ -61,15 +61,17 @@ object TwitchServer extends IOApp.Simple:
           val host = host"0.0.0.0"
           val port = Port.fromInt(sys.env.getOrElse("PORT", "8080").toInt).getOrElse(port"8080")
 
+          val staticDir = sys.env.getOrElse("STATIC_DIR", "./modules/frontend")
+
           val routes = new Routes(clientId, clientSecret, redirectUri, client, pendingOAuthStates, db, notificationQueues, settings)
-          val frontendService = fileService[IO](FileService.Config("./modules/frontend"))
+          val frontendService = fileService[IO](FileService.Config(staticDir))
 
           val httpApp = Router(
             "/api" -> routes.apiRoutes,
             "/" -> routes.authRoutes,
             "/" -> HttpRoutes.of[IO] {
               case req @ GET -> Root =>
-                StaticFile.fromPath(fs2.io.file.Path("./modules/frontend/index.html"), Some(req)).getOrElseF(NotFound())
+                StaticFile.fromPath(fs2.io.file.Path(s"$staticDir/index.html"), Some(req)).getOrElseF(NotFound())
             },
             "/" -> frontendService
           ).orNotFound
