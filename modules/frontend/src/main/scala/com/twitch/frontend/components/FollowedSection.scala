@@ -38,9 +38,8 @@ object FollowedSection:
         cls := "bg-twitch-danger/80 hover:bg-twitch-danger text-white text-xs px-3 py-1 rounded-full transition-colors cursor-pointer",
         "Unfollow",
         onClick --> { _.foreach(_ =>
-          (state.update(_.copy(status = Some("Unfollowing..."))) *>
-            ApiClient.postUnfollow(cat.id).flatMap(_ =>
-              ApiClient.fetchFollowed.flatMap(cats => state.update(_.copy(followedCategories = cats, status = None)))
+          (ApiClient.postUnfollow(cat.id).flatMap(_ =>
+              ApiClient.fetchFollowed.flatMap(cats => state.update(_.copy(followedCategories = cats)))
             )).start.void
         )}
       )
