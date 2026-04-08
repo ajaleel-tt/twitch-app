@@ -9,6 +9,7 @@ import org.http4s.circe.CirceEntityEncoder.*
 import org.http4s.client.Client
 import org.http4s.implicits.*
 import org.http4s.headers.{Authorization, Location}
+import org.http4s.SameSite
 import org.typelevel.ci.*
 import java.util.UUID
 import java.time.Instant
@@ -34,6 +35,8 @@ class Routes(
     notificationQueues: Ref[IO, Map[String, (String, Queue[IO, StreamNotification])]],
     settings: AppSettings
 ):
+
+  private val secureCookies = redirectUri.startsWith("https")
 
   private def getSession(req: Request[IO]): IO[Option[SessionData]] =
     req.cookies.find(_.name == "session_id").map(_.content) match
@@ -120,7 +123,13 @@ class Routes(
         sessionId = UUID.randomUUID().toString
         tokenExpiresAt = Some(Instant.now().plusSeconds(tokenResponse.expires_in.toLong))
         _ <- db.createSession(sessionId, user, tokenResponse.access_token, tokenResponse.refresh_token, tokenExpiresAt)
-        res <- Found(Location(uri"/")).map(_.addCookie(ResponseCookie("session_id", sessionId, path = Some("/"), httpOnly = true)))
+        res <- Found(Location(uri"/")).map(_.addCookie(ResponseCookie(
+          "session_id", sessionId,
+          path = Some("/"),
+          httpOnly = true,
+          secure = secureCookies,
+          sameSite = Some(SameSite.Lax)
+        )))
       } yield res
 
       flow.handleErrorWith { err =>
