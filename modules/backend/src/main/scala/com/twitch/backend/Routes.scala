@@ -28,7 +28,8 @@ class Routes(
     userSession: Ref[IO, Map[String, SessionData]],
     pendingOAuthStates: Ref[IO, Set[String]],
     db: Database,
-    notificationQueues: Ref[IO, Map[String, (String, Queue[IO, StreamNotification])]]
+    notificationQueues: Ref[IO, Map[String, (String, Queue[IO, StreamNotification])]],
+    settings: AppSettings
 ):
 
   private def getSession(req: Request[IO]): IO[Option[SessionData]] = {
@@ -126,6 +127,7 @@ class Routes(
         case Some(data) =>
           val uri = uri"https://api.twitch.tv/helix/search/categories"
             .withQueryParam("query", query)
+            .withQueryParam("first", settings.searchPageSize.toString)
             .withOptionQueryParam("after", after)
           val searchReq = Request[IO](method = Method.GET, uri = uri).putHeaders(
             Authorization(Credentials.Token(AuthScheme.Bearer, data.accessToken)),
@@ -140,6 +142,31 @@ class Routes(
         _ <- sessionId.fold(IO.unit)(id => userSession.update(_ - id))
         res <- Ok("Logged out").map(_.removeCookie("session_id"))
       } yield res
+    case req @ GET -> Root / "tag-filters" =>
+      getSession(req).flatMap {
+        case Some(data) =>
+          db.getTagFilters(data.user.id).flatMap(filters => Ok(TagFiltersResponse(filters)))
+        case None => Forbidden("Not logged in")
+      }
+    case req @ POST -> Root / "tag-filters" / "add" =>
+      req.as[AddTagFilterRequest].flatMap { body =>
+        getSession(req).flatMap {
+          case Some(data) =>
+            val tag = body.tag.trim
+            if tag.isEmpty || tag.length > 25 then BadRequest("Tag must be 1-25 characters")
+            else if body.filterType != "include" && body.filterType != "exclude" then BadRequest("filterType must be 'include' or 'exclude'")
+            else db.addTagFilter(data.user.id, body.filterType, tag) *> Ok("Filter added")
+          case None => Forbidden("Not logged in")
+        }
+      }
+    case req @ POST -> Root / "tag-filters" / "remove" =>
+      req.as[AddTagFilterRequest].flatMap { body =>
+        getSession(req).flatMap {
+          case Some(data) =>
+            db.removeTagFilter(data.user.id, body.filterType, body.tag) *> Ok("Filter removed")
+          case None => Forbidden("Not logged in")
+        }
+      }
     case req @ GET -> Root / "notifications" / "stream" =>
       getSession(req).flatMap {
         case None => Forbidden("Not logged in")

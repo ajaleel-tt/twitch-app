@@ -143,9 +143,8 @@ object SearchSection:
           },
           "Unfollow",
           onClick --> { _.foreach(_ =>
-            (state.update(_.copy(status = Some("Unfollowing..."))) *>
-              ApiClient.postUnfollow(cat.id).flatMap(_ =>
-                ApiClient.fetchFollowed.flatMap(cats => state.update(_.copy(followedCategories = cats, status = None)))
+            (ApiClient.postUnfollow(cat.id).flatMap(_ =>
+                ApiClient.fetchFollowed.flatMap(cats => state.update(_.copy(followedCategories = cats)))
               )).start.void
           )}
         ),
@@ -157,9 +156,8 @@ object SearchSection:
           },
           "Follow",
           onClick --> { _.foreach(_ =>
-            (state.update(_.copy(status = Some(s"Following ${cat.name}..."))) *>
-              ApiClient.postFollow(cat).flatMap(_ =>
-                ApiClient.fetchFollowed.flatMap(cats => state.update(_.copy(followedCategories = cats, status = None)))
+            (ApiClient.postFollow(cat).flatMap(_ =>
+                ApiClient.fetchFollowed.flatMap(cats => state.update(_.copy(followedCategories = cats)))
               )).start.void
           )}
         )

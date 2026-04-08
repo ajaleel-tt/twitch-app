@@ -10,7 +10,6 @@ import org.http4s.circe.CirceEntityDecoder.*
 import org.http4s.headers.Authorization
 import org.http4s.implicits.*
 import org.typelevel.ci.*
-import scala.concurrent.duration.*
 import java.time.Instant
 import com.twitch.core.*
 
@@ -21,7 +20,8 @@ class StreamPoller(
     db: Database,
     notificationQueues: Ref[IO, Map[String, (String, Queue[IO, StreamNotification])]],
     appToken: Ref[IO, Option[String]],
-    notifiedStreamIds: Ref[IO, Set[String]]
+    notifiedStreamIds: Ref[IO, Set[String]],
+    settings: AppSettings
 ):
 
   private def fetchAppToken: IO[String] =
@@ -55,7 +55,7 @@ class StreamPoller(
   private def fetchStreamsPage(token: String, categoryId: String, cursor: Option[String]): IO[TwitchStreamsResponse] =
     val baseUri = uri"https://api.twitch.tv/helix/streams"
       .withQueryParam("game_id", categoryId)
-      .withQueryParam("first", "100")
+      .withQueryParam("first", settings.streamsPageSize.toString)
     val uriWithCursor = cursor.fold(baseUri)(c => baseUri.withQueryParam("after", c))
     val req = Request[IO](method = Method.GET, uri = uriWithCursor).putHeaders(
       Authorization(Credentials.Token(AuthScheme.Bearer, token)),
@@ -64,7 +64,7 @@ class StreamPoller(
     client.expect[TwitchStreamsResponse](req)
 
   private def fetchLiveStreams(token: String, categoryIds: List[String]): IO[List[TwitchStream]] =
-    categoryIds.parTraverseN(5) { categoryId =>
+    categoryIds.parTraverseN(settings.parallelCategories) { categoryId =>
       def go(cursor: Option[String], acc: List[TwitchStream]): IO[List[TwitchStream]] =
         fetchStreamsPage(token, categoryId, cursor).flatMap { resp =>
           val newAcc = resp.data.reverse ::: acc
@@ -75,37 +75,22 @@ class StreamPoller(
       go(None, Nil)
     }.map(_.flatten)
 
-  private def toNotification(s: TwitchStream): StreamNotification =
-    StreamNotification(
-      categoryId = s.game_id,
-      categoryName = s.game_name,
-      streamerId = s.user_id,
-      streamerLogin = s.user_login,
-      streamerName = s.user_name,
-      streamTitle = s.title,
-      viewerCount = s.viewer_count,
-      thumbnailUrl = s.thumbnail_url.replace("{width}", "320").replace("{height}", "180")
-    )
-
   private def broadcastNotifications(notifications: List[StreamNotification]): IO[Unit] =
     for
       queues <- notificationQueues.get
       userIds = queues.values.map(_._1).toSet
       followedByUser <- userIds.toList.traverse(uid => db.getFollowed(uid).map(cats => uid -> cats.map(_.id).toSet))
       followedMap = followedByUser.toMap
+      filtersByUser <- userIds.toList.traverse(uid => db.getTagFilters(uid).map(filters => uid -> filters))
+      filtersMap = filtersByUser.toMap
       byCategoryId = notifications.groupBy(_.categoryId)
       _ <- queues.values.toList.traverse_ { case (userId, queue) =>
         val userCategoryIds = followedMap.getOrElse(userId, Set.empty)
         val relevantNotifications = userCategoryIds.toList.flatMap(id => byCategoryId.getOrElse(id, Nil))
-        relevantNotifications.traverse_(queue.offer)
+        val filtered = StreamLogic.applyTagFilters(relevantNotifications, filtersMap.getOrElse(userId, Nil))
+        filtered.traverse_(queue.offer)
       }
     yield ()
-
-  private def recentlyWentLive(s: TwitchStream, now: Instant): Boolean =
-    s.`type` == "live" && {
-      val startedAt = Instant.parse(s.started_at)
-      java.time.Duration.between(startedAt, now).toMinutes < 5
-    }
 
   // First poll seeds the set without sending notifications so we don't
   // flood the user with every stream that happens to be live at startup.
@@ -129,24 +114,21 @@ class StreamPoller(
         for
           streams <- withTokenRefresh(token => fetchLiveStreams(token, allCategories.map(_.id)))
           now <- IO(Instant.now())
-          recentStreams = streams.filter(recentlyWentLive(_, now))
           alreadyNotified <- notifiedStreamIds.get
-          newStreams = recentStreams.filter(s => !alreadyNotified.contains(s.id))
-          // Accumulate all seen stream IDs so that API pagination flicker
-          // between polls can never cause a re-notification.
-          _ <- notifiedStreamIds.set(alreadyNotified ++ streams.iterator.map(_.id).toSet)
-          _ <- IO.println(s"Poller: fetched ${streams.size} total streams across ${allCategories.size} categories, ${recentStreams.size} recently live, ${newStreams.size} new")
+          (newStreams, updatedNotified) = StreamLogic.findNewStreams(streams, alreadyNotified, now, settings.recentlyLiveWindow)
+          _ <- notifiedStreamIds.set(updatedNotified)
+          _ <- IO.println(s"Poller: fetched ${streams.size} total streams across ${allCategories.size} categories, ${newStreams.size} new")
           _ <- IO.whenA(newStreams.nonEmpty) {
-            broadcastNotifications(newStreams.map(toNotification))
+            broadcastNotifications(newStreams.map(StreamLogic.toNotification))
           }
         yield ()
       }
     yield ()
 
   def start: IO[Nothing] =
-    IO.println("StreamPoller: starting (polling every 60s)") *>
+    IO.println(s"StreamPoller: starting (polling every ${settings.pollerInterval.toSeconds}s)") *>
       seedOnce.handleErrorWith(e => IO.println(s"StreamPoller seed error: $e")) *>
-      (IO.sleep(60.seconds) *> pollOnce.handleErrorWith(e => IO.println(s"StreamPoller error: $e"))).foreverM
+      (IO.sleep(settings.pollerInterval) *> pollOnce.handleErrorWith(e => IO.println(s"StreamPoller error: $e"))).foreverM
 
 object StreamPoller:
   def make(
@@ -154,9 +136,10 @@ object StreamPoller:
       clientSecret: String,
       client: Client[IO],
       db: Database,
-      notificationQueues: Ref[IO, Map[String, (String, Queue[IO, StreamNotification])]]
+      notificationQueues: Ref[IO, Map[String, (String, Queue[IO, StreamNotification])]],
+      settings: AppSettings
   ): IO[StreamPoller] =
     for
       tokenRef <- IO.ref(Option.empty[String])
       notifiedRef <- IO.ref(Set.empty[String])
-    yield new StreamPoller(clientId, clientSecret, client, db, notificationQueues, tokenRef, notifiedRef)
+    yield new StreamPoller(clientId, clientSecret, client, db, notificationQueues, tokenRef, notifiedRef, settings)

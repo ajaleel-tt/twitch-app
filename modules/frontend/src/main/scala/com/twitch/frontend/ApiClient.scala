@@ -8,7 +8,6 @@ import org.http4s.dom.FetchClientBuilder
 import org.http4s.{Request as Http4sRequest, Method, Uri, MediaType}
 import org.http4s.headers.`Content-Type`
 import org.scalajs.dom
-import scala.concurrent.duration.*
 import com.twitch.core.*
 
 object ApiClient:
@@ -55,11 +54,29 @@ object ApiClient:
     val req = Http4sRequest[IO](Method.POST, Uri.unsafeFromString("/api/logout"))
     httpClient.expect[String](req).void.handleError(_ => ())
 
+  def fetchTagFilters: IO[List[TagFilter]] =
+    httpClient.expect[String](Uri.unsafeFromString("/api/tag-filters")).attempt.map {
+      case Right(body) => decode[TagFiltersResponse](body).map(_.filters).getOrElse(Nil)
+      case Left(_)     => Nil
+    }
+
+  def addTagFilter(filterType: String, tag: String): IO[Unit] =
+    val req = Http4sRequest[IO](Method.POST, Uri.unsafeFromString("/api/tag-filters/add"))
+      .withEntity(AddTagFilterRequest(filterType, tag).asJson.noSpaces)
+      .withContentType(`Content-Type`(MediaType.application.json))
+    httpClient.expect[String](req).void
+
+  def removeTagFilter(filterType: String, tag: String): IO[Unit] =
+    val req = Http4sRequest[IO](Method.POST, Uri.unsafeFromString("/api/tag-filters/remove"))
+      .withEntity(AddTagFilterRequest(filterType, tag).asJson.noSpaces)
+      .withContentType(`Content-Type`(MediaType.application.json))
+    httpClient.expect[String](req).void
+
   def streamNotifications(onNotification: StreamNotification => IO[Unit]): IO[Nothing] =
     connectSSE(onNotification)
       .handleErrorWith { e =>
-        IO.println(s"SSE connection error: $e, reconnecting in 5s...") *>
-          IO.sleep(5.seconds) *>
+        IO.println(s"SSE connection error: $e, reconnecting in ${Defaults.SseReconnectDelay}...") *>
+          IO.sleep(Defaults.SseReconnectDelay) *>
           streamNotifications(onNotification)
       }
 

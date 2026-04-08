@@ -65,6 +65,15 @@ object NotificationsSection:
         p(
           cls := "text-xs text-gray-500",
           s"${n.viewerCount} viewers"
+        ),
+        div(
+          cls := "flex flex-wrap gap-1 mt-1",
+          n.tags.take(com.twitch.frontend.Defaults.TagsPerNotificationCard).map { tag =>
+            span(
+              cls := "text-[10px] bg-twitch-dark-hover text-gray-400 px-1.5 py-0.5 rounded",
+              tag
+            )
+          }
         )
       )
     )
