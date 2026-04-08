@@ -13,5 +13,8 @@ case class Model(
     paginationCursor: Option[String] = None,
     currentPage: Int = 0,
     pageSize: Int = 5,
-    notifications: List[StreamNotification] = Nil
+    notifications: List[StreamNotification] = Nil,
+    tagFilters: List[TagFilter] = Nil,
+    newIncludeTag: String = "",
+    newExcludeTag: String = ""
 )

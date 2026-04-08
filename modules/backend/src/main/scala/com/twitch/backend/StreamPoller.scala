@@ -84,8 +84,22 @@ class StreamPoller(
       streamerName = s.user_name,
       streamTitle = s.title,
       viewerCount = s.viewer_count,
-      thumbnailUrl = s.thumbnail_url.replace("{width}", "320").replace("{height}", "180")
+      thumbnailUrl = s.thumbnail_url.replace("{width}", "320").replace("{height}", "180"),
+      tags = s.tags.getOrElse(Nil)
     )
+
+  private def applyTagFilters(
+      notifications: List[StreamNotification],
+      filters: List[TagFilter]
+  ): List[StreamNotification] =
+    val includeTags = filters.filter(_.filterType == "include").map(_.tag.toLowerCase).toSet
+    val excludeTags = filters.filter(_.filterType == "exclude").map(_.tag.toLowerCase).toSet
+    notifications.filter { n =>
+      val streamTags = n.tags.map(_.toLowerCase).toSet
+      val passesInclude = includeTags.isEmpty || streamTags.exists(includeTags.contains)
+      val passesExclude = !streamTags.exists(excludeTags.contains)
+      passesInclude && passesExclude
+    }
 
   private def broadcastNotifications(notifications: List[StreamNotification]): IO[Unit] =
     for
@@ -93,11 +107,14 @@ class StreamPoller(
       userIds = queues.values.map(_._1).toSet
       followedByUser <- userIds.toList.traverse(uid => db.getFollowed(uid).map(cats => uid -> cats.map(_.id).toSet))
       followedMap = followedByUser.toMap
+      filtersByUser <- userIds.toList.traverse(uid => db.getTagFilters(uid).map(filters => uid -> filters))
+      filtersMap = filtersByUser.toMap
       byCategoryId = notifications.groupBy(_.categoryId)
       _ <- queues.values.toList.traverse_ { case (userId, queue) =>
         val userCategoryIds = followedMap.getOrElse(userId, Set.empty)
         val relevantNotifications = userCategoryIds.toList.flatMap(id => byCategoryId.getOrElse(id, Nil))
-        relevantNotifications.traverse_(queue.offer)
+        val filtered = applyTagFilters(relevantNotifications, filtersMap.getOrElse(userId, Nil))
+        filtered.traverse_(queue.offer)
       }
     yield ()
 

@@ -18,7 +18,8 @@ object Main extends IOWebApp:
       _ <- (
         ApiClient.fetchUser.flatMap(u => state.update(_.copy(user = u))),
         ApiClient.fetchConfig.flatMap(c => state.update(s => s.copy(twitchClientId = c.map(_.twitchClientId)))),
-        ApiClient.fetchFollowed.flatMap(cats => state.update(_.copy(followedCategories = cats)))
+        ApiClient.fetchFollowed.flatMap(cats => state.update(_.copy(followedCategories = cats))),
+        ApiClient.fetchTagFilters.flatMap(filters => state.update(_.copy(tagFilters = filters)))
       ).parTupled.toResource
       _ <- startNotificationStream(state).background
       app <- appView(state)
@@ -117,6 +118,7 @@ object Main extends IOWebApp:
       div(
         cls := "w-full border-t border-gray-800 pt-8",
         h3(cls := "text-lg font-bold text-white mb-4 text-center", "Live Now in Your Followed Categories"),
+        TagFiltersSection.tagFiltersPanel(state),
         NotificationsSection.notificationsView(state)
       ),
       // Followed Categories section

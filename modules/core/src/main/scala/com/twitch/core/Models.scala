@@ -55,7 +55,8 @@ case class TwitchStream(
     title: String,
     viewer_count: Int,
     started_at: String,
-    thumbnail_url: String
+    thumbnail_url: String,
+    tags: Option[List[String]] = None
 ) derives Codec.AsObject
 
 case class TwitchStreamsResponse(
@@ -71,5 +72,20 @@ case class StreamNotification(
     streamerName: String,
     streamTitle: String,
     viewerCount: Int,
-    thumbnailUrl: String
+    thumbnailUrl: String,
+    tags: List[String] = Nil
+) derives Codec.AsObject
+
+case class TagFilter(
+    filterType: String,
+    tag: String
+) derives Codec.AsObject
+
+case class TagFiltersResponse(
+    filters: List[TagFilter]
+) derives Codec.AsObject
+
+case class AddTagFilterRequest(
+    filterType: String,
+    tag: String
 ) derives Codec.AsObject
