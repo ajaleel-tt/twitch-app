@@ -75,32 +75,6 @@ class StreamPoller(
       go(None, Nil)
     }.map(_.flatten)
 
-  private def toNotification(s: TwitchStream): StreamNotification =
-    StreamNotification(
-      categoryId = s.game_id,
-      categoryName = s.game_name,
-      streamerId = s.user_id,
-      streamerLogin = s.user_login,
-      streamerName = s.user_name,
-      streamTitle = s.title,
-      viewerCount = s.viewer_count,
-      thumbnailUrl = s.thumbnail_url.replace("{width}", "320").replace("{height}", "180"),
-      tags = s.tags.getOrElse(Nil)
-    )
-
-  private def applyTagFilters(
-      notifications: List[StreamNotification],
-      filters: List[TagFilter]
-  ): List[StreamNotification] =
-    val includeTags = filters.filter(_.filterType == "include").map(_.tag.toLowerCase).toSet
-    val excludeTags = filters.filter(_.filterType == "exclude").map(_.tag.toLowerCase).toSet
-    notifications.filter { n =>
-      val streamTags = n.tags.map(_.toLowerCase).toSet
-      val passesInclude = includeTags.isEmpty || streamTags.exists(includeTags.contains)
-      val passesExclude = !streamTags.exists(excludeTags.contains)
-      passesInclude && passesExclude
-    }
-
   private def broadcastNotifications(notifications: List[StreamNotification]): IO[Unit] =
     for
       queues <- notificationQueues.get
@@ -113,16 +87,13 @@ class StreamPoller(
       _ <- queues.values.toList.traverse_ { case (userId, queue) =>
         val userCategoryIds = followedMap.getOrElse(userId, Set.empty)
         val relevantNotifications = userCategoryIds.toList.flatMap(id => byCategoryId.getOrElse(id, Nil))
-        val filtered = applyTagFilters(relevantNotifications, filtersMap.getOrElse(userId, Nil))
+        val filtered = StreamLogic.applyTagFilters(relevantNotifications, filtersMap.getOrElse(userId, Nil))
         filtered.traverse_(queue.offer)
       }
     yield ()
 
   private def recentlyWentLive(s: TwitchStream, now: Instant): Boolean =
-    s.`type` == "live" && {
-      val startedAt = Instant.parse(s.started_at)
-      java.time.Duration.between(startedAt, now).toMillis < settings.recentlyLiveWindow.toMillis
-    }
+    StreamLogic.recentlyWentLive(s, now, settings.recentlyLiveWindow)
 
   // First poll seeds the set without sending notifications so we don't
   // flood the user with every stream that happens to be live at startup.
@@ -154,7 +125,7 @@ class StreamPoller(
           _ <- notifiedStreamIds.set(alreadyNotified ++ streams.iterator.map(_.id).toSet)
           _ <- IO.println(s"Poller: fetched ${streams.size} total streams across ${allCategories.size} categories, ${recentStreams.size} recently live, ${newStreams.size} new")
           _ <- IO.whenA(newStreams.nonEmpty) {
-            broadcastNotifications(newStreams.map(toNotification))
+            broadcastNotifications(newStreams.map(StreamLogic.toNotification))
           }
         yield ()
       }
