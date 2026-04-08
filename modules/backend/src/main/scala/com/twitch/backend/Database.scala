@@ -6,7 +6,10 @@ import doobie.*
 import doobie.implicits.*
 import com.twitch.core.{TwitchCategory, TagFilter}
 
-class Database(xa: Transactor[IO]):
+enum SqlDialect:
+  case H2, Postgres
+
+class Database(xa: Transactor[IO], dialect: SqlDialect = SqlDialect.H2):
 
   def initDb: IO[Unit] =
     val createFollowed = sql"""
@@ -35,11 +38,20 @@ class Database(xa: Transactor[IO]):
       .transact(xa)
 
   def follow(userId: String, category: TwitchCategory): IO[Unit] =
-    sql"""
-      MERGE INTO followed_categories (user_id, category_id, name, box_art_url)
-      KEY(user_id, category_id)
-      VALUES ($userId, ${category.id}, ${category.name}, ${category.box_art_url})
-    """.update.run.transact(xa).void
+    val stmt = dialect match
+      case SqlDialect.Postgres =>
+        sql"""
+          INSERT INTO followed_categories (user_id, category_id, name, box_art_url)
+          VALUES ($userId, ${category.id}, ${category.name}, ${category.box_art_url})
+          ON CONFLICT (user_id, category_id) DO UPDATE SET name = EXCLUDED.name, box_art_url = EXCLUDED.box_art_url
+        """
+      case SqlDialect.H2 =>
+        sql"""
+          MERGE INTO followed_categories (user_id, category_id, name, box_art_url)
+          KEY(user_id, category_id)
+          VALUES ($userId, ${category.id}, ${category.name}, ${category.box_art_url})
+        """
+    stmt.update.run.transact(xa).void
 
   def unfollow(userId: String, categoryId: String): IO[Unit] =
     sql"DELETE FROM followed_categories WHERE user_id = $userId AND category_id = $categoryId"
@@ -59,11 +71,20 @@ class Database(xa: Transactor[IO]):
 
   def addTagFilter(userId: String, filterType: String, tag: String): IO[Unit] =
     val normalizedTag = tag.trim.toLowerCase
-    sql"""
-      MERGE INTO tag_filters (user_id, filter_type, tag)
-      KEY(user_id, filter_type, tag)
-      VALUES ($userId, $filterType, $normalizedTag)
-    """.update.run.transact(xa).void
+    val stmt = dialect match
+      case SqlDialect.Postgres =>
+        sql"""
+          INSERT INTO tag_filters (user_id, filter_type, tag)
+          VALUES ($userId, $filterType, $normalizedTag)
+          ON CONFLICT (user_id, filter_type, tag) DO NOTHING
+        """
+      case SqlDialect.H2 =>
+        sql"""
+          MERGE INTO tag_filters (user_id, filter_type, tag)
+          KEY(user_id, filter_type, tag)
+          VALUES ($userId, $filterType, $normalizedTag)
+        """
+    stmt.update.run.transact(xa).void
 
   def removeTagFilter(userId: String, filterType: String, tag: String): IO[Unit] =
     val normalizedTag = tag.trim.toLowerCase

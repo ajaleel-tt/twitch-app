@@ -11,6 +11,7 @@ import org.http4s.server.Router
 import org.http4s.server.middleware.CORS
 import org.http4s.server.staticcontent.*
 import doobie.h2.H2Transactor
+import doobie.hikari.HikariTransactor
 import cats.effect.std.Queue
 import com.twitch.core.StreamNotification
 
@@ -29,14 +30,28 @@ object TwitchServer extends IOApp.Simple:
   private val settings = AppSettings.load
 
   def run: IO[Unit] =
-    val dbUrl = "jdbc:h2:./twitch_app_db;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE"
-    val transactorResource = for {
-      ec <- Resource.eval(IO.executionContext)
-      xa <- H2Transactor.newH2Transactor[IO](dbUrl, "sa", "", ec)
-    } yield xa
+    val dbUrl = sys.env.getOrElse("DATABASE_URL",
+      "jdbc:h2:./twitch_app_db;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE")
+    val isPostgres = dbUrl.startsWith("jdbc:postgresql")
+    val dialect = if isPostgres then SqlDialect.Postgres else SqlDialect.H2
+
+    val transactorResource: Resource[IO, doobie.Transactor[IO]] =
+      if isPostgres then
+        HikariTransactor.newHikariTransactor[IO](
+          driverClassName = "org.postgresql.Driver",
+          url = dbUrl,
+          user = sys.env.getOrElse("DATABASE_USER", ""),
+          pass = sys.env.getOrElse("DATABASE_PASS", ""),
+          connectEC = scala.concurrent.ExecutionContext.global
+        )
+      else
+        for {
+          ec <- Resource.eval(IO.executionContext)
+          xa <- H2Transactor.newH2Transactor[IO](dbUrl, "sa", "", ec)
+        } yield xa
 
     transactorResource.use { xa =>
-      val db = new Database(xa)
+      val db = new Database(xa, dialect)
       for {
         _ <- db.initDb
         userSession <- IO.ref[Map[String, SessionData]](Map.empty)
