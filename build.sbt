@@ -126,13 +126,23 @@ lazy val backend = project.in(file("modules/backend"))
       "org.http4s"    %% "http4s-circe"        % "0.23.30",
       "ch.qos.logback" % "logback-classic"     % "1.5.16",
       "org.tpolecat"  %% "doobie-core"         % "1.0.0-RC8",
-      "org.tpolecat"  %% "doobie-h2"           % "1.0.0-RC8",
+      "org.tpolecat"  %% "doobie-postgres"     % "1.0.0-RC8",
       "org.tpolecat"  %% "doobie-hikari"       % "1.0.0-RC8",
+      "org.postgresql"  % "postgresql"          % "42.7.4",
+      "org.tpolecat"  %% "doobie-h2"           % "1.0.0-RC8",
       "com.h2database" % "h2"                  % "2.3.232",
       "com.typesafe"   % "config"              % "1.4.3",
       "org.scalameta"  %% "munit"              % "1.0.0"  % Test,
       "org.typelevel"  %% "munit-cats-effect"  % "2.0.0"  % Test
-    )
+    ),
+    assembly / mainClass := Some("com.twitch.backend.TwitchServer"),
+    assembly / assemblyJarName := "twitch-app.jar",
+    assembly / assemblyMergeStrategy := {
+      case PathList("META-INF", "services", _*) => MergeStrategy.concat
+      case PathList("META-INF", _*) => MergeStrategy.discard
+      case "module-info.class" => MergeStrategy.discard
+      case x => MergeStrategy.first
+    }
   )
 
 // ── Convenience command alias ──────────────────────────────────────
