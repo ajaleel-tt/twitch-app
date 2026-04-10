@@ -53,6 +53,6 @@ class EmailService(
     s"""<html><body style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
        |<h1 style="color: #9146FF;">Welcome to Twitch App, $displayName!</h1>
        |<p>Thanks for signing up. We hope you enjoy tracking your favorite Twitch categories and getting notified when streamers go live.</p>
-       |<p>Have feedback or ideas? Reply to this email and let us know!</p>
+       |<p>Have feedback or ideas? <a href="https://discord.gg/Tk2XVDUh">Join our Discord server</a> and let us know!</p>
        |<p>Happy watching!</p>
        |</body></html>""".stripMargin
