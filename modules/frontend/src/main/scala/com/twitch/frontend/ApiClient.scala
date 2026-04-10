@@ -2,22 +2,35 @@ package com.twitch.frontend
 
 import cats.effect.*
 import fs2.Stream
+import scala.concurrent.duration.*
 import io.circe.parser.decode
 import io.circe.syntax.*
 import org.http4s.dom.FetchClientBuilder
 import org.http4s.{Request as Http4sRequest, Method, Uri, MediaType}
 import org.http4s.headers.`Content-Type`
 import org.scalajs.dom
+import org.scalajs.dom.RequestCredentials
 import com.twitch.core.*
 
 object ApiClient:
 
-  private val httpClient = FetchClientBuilder[IO].create
+  private val httpClient = FetchClientBuilder[IO]
+    .withCredentials(RequestCredentials.`same-origin`)
+    .create
 
   def fetchUser: IO[Option[TwitchUser]] =
-    httpClient.expect[String](Uri.unsafeFromString("/api/user")).attempt.map {
-      case Right(body) => decode[TwitchUser](body).toOption
-      case Left(_)     => None
+    fetchUserOnce.handleErrorWith { _ =>
+      IO.sleep(2.seconds) *> fetchUserOnce.handleErrorWith { _ =>
+        IO.sleep(3.seconds) *> fetchUserOnce
+      }
+    }
+
+  private def fetchUserOnce: IO[Option[TwitchUser]] =
+    httpClient.run(Http4sRequest[IO](uri = Uri.unsafeFromString("/api/user"))).use { resp =>
+      if (resp.status.isSuccess)
+        resp.as[String].map(body => decode[TwitchUser](body).toOption)
+      else
+        IO.pure(None)
     }
 
   def fetchConfig: IO[Option[AppConfig]] =
