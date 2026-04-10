@@ -1,23 +1,36 @@
 package com.twitch.frontend
 
 import cats.effect.*
-import cats.effect.unsafe.implicits.global
+import fs2.Stream
+import scala.concurrent.duration.*
 import io.circe.parser.decode
 import io.circe.syntax.*
 import org.http4s.dom.FetchClientBuilder
 import org.http4s.{Request as Http4sRequest, Method, Uri, MediaType}
 import org.http4s.headers.`Content-Type`
 import org.scalajs.dom
+import org.scalajs.dom.RequestCredentials
 import com.twitch.core.*
 
 object ApiClient:
 
-  private val httpClient = FetchClientBuilder[IO].create
+  private val httpClient = FetchClientBuilder[IO]
+    .withCredentials(RequestCredentials.`same-origin`)
+    .create
 
   def fetchUser: IO[Option[TwitchUser]] =
-    httpClient.expect[String](Uri.unsafeFromString("/api/user")).attempt.map {
-      case Right(body) => decode[TwitchUser](body).toOption
-      case Left(_)     => None
+    fetchUserOnce.handleErrorWith { _ =>
+      IO.sleep(2.seconds) *> fetchUserOnce.handleErrorWith { _ =>
+        IO.sleep(3.seconds) *> fetchUserOnce
+      }
+    }
+
+  private def fetchUserOnce: IO[Option[TwitchUser]] =
+    httpClient.run(Http4sRequest[IO](uri = Uri.unsafeFromString("/api/user"))).use { resp =>
+      if (resp.status.isSuccess)
+        resp.as[String].map(body => decode[TwitchUser](body).toOption)
+      else
+        IO.pure(None)
     }
 
   def fetchConfig: IO[Option[AppConfig]] =
@@ -73,25 +86,53 @@ object ApiClient:
     httpClient.expect[String](req).void
 
   def streamNotifications(onNotification: StreamNotification => IO[Unit]): IO[Nothing] =
-    connectSSE(onNotification)
+    sseStream
+      .evalMap(onNotification)
       .handleErrorWith { e =>
-        IO.println(s"SSE connection error: $e, reconnecting in ${Defaults.SseReconnectDelay}...") *>
-          IO.sleep(Defaults.SseReconnectDelay) *>
-          streamNotifications(onNotification)
+        Stream.eval(
+          IO.println(s"SSE connection error: $e, reconnecting in ${Defaults.SseReconnectDelay}...")
+            *> IO.sleep(Defaults.SseReconnectDelay)
+        ) >> sseStream.evalMap(onNotification)
       }
+      .compile
+      .drain
+      .flatMap(_ => IO.never)
 
-  private def connectSSE(onNotification: StreamNotification => IO[Unit]): IO[Nothing] =
-    IO.async[Nothing] { cb =>
-      IO {
-        val es = new dom.EventSource("/api/notifications/stream")
-        es.addEventListener("stream-live", (e: dom.MessageEvent) => {
-          decode[StreamNotification](e.data.asInstanceOf[String]).foreach { n =>
-            onNotification(n).unsafeRunAndForget()
+  private def sseStream: Stream[IO, StreamNotification] =
+    Stream.resource(sseResource).flatMap(nextEvent => Stream.repeatEval(nextEvent))
+
+  private def sseResource: Resource[IO, IO[StreamNotification]] =
+    Resource.make(IO {
+      // Mutable state is safe here — Scala.js is single-threaded
+      var waiting: (Either[Throwable, StreamNotification] => Unit) | Null = null
+      val buffer = scala.collection.mutable.Queue[StreamNotification]()
+
+      val es = new dom.EventSource("/api/notifications/stream")
+      es.addEventListener("stream-live", (e: dom.MessageEvent) => {
+        decode[StreamNotification](e.data.asInstanceOf[String]).foreach { n =>
+          if (waiting != null) {
+            val cb = waiting
+            waiting = null
+            cb(Right(n))
+          } else {
+            buffer.enqueue(n)
           }
-        })
-        es.onerror = (_: dom.Event) => {
+        }
+      })
+      es.onerror = (_: dom.Event) => {
+        if (waiting != null) {
+          val cb = waiting
+          waiting = null
           cb(Left(new RuntimeException("SSE connection error")))
         }
-        Some(IO(es.close()))
       }
-    }
+
+      val nextEvent: IO[StreamNotification] = IO.async_[StreamNotification] { cb =>
+        if (buffer.nonEmpty)
+          cb(Right(buffer.dequeue()))
+        else
+          waiting = cb
+      }
+
+      (es, nextEvent)
+    })(pair => IO(pair._1.close())).map(_._2)

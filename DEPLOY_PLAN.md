@@ -224,7 +224,61 @@ paths:
 
 ---
 
-## Step 7 (Future): Web Push Notifications
+## Step 7: Structured Logging and Metrics
+
+**Why:** The app currently logs via `IO.println` — no log levels, no timestamps, no structured format. In production, you need to distinguish errors from info, search logs efficiently, and understand app health at a glance. Metrics let you answer questions like "how many streams are we polling?" and "how long do Twitch API calls take?" without reading logs.
+
+### Part A: Structured Logging
+
+**Current state:** All logging is `IO.println` (Routes.scala lines 57/78/85/92, StreamPoller.scala lines 105/120/129-131, TwitchServer.scala line 68). Logback is already a dependency (`build.sbt` line 127) but has no configuration file and isn't used by application code.
+
+**What to do:**
+- Add `log4cats` dependency to `build.sbt` — this is the cats-effect logging library that integrates with SLF4J/Logback:
+  ```scala
+  "org.typelevel" %% "log4cats-slf4j" % "2.7.0"
+  ```
+- Create `modules/backend/src/main/resources/logback.xml` with a structured JSON appender (for production log aggregation) and a human-readable console appender (for local dev). Use an environment variable to switch between them.
+- Replace all `IO.println` calls with appropriate log levels:
+  | Current `IO.println` | Log level | Why |
+  |---|---|---|
+  | "Server started at..." | `info` | Startup lifecycle |
+  | "StreamPoller: starting..." | `info` | Startup lifecycle |
+  | "Poller: seeded N streams..." | `info` | Operational status |
+  | "Poller: fetched N streams..." | `debug` | Noisy in production (every 60s) |
+  | "Received auth callback" | `debug` | Routine request flow |
+  | "Token exchange successful" | `info` | Auth lifecycle |
+  | "Found user: ..." | `info` | Auth lifecycle |
+  | "Auth flow failed: ..." | `error` | Actionable failure |
+  | "StreamPoller seed error: ..." | `error` | Actionable failure |
+  | "StreamPoller error: ..." | `error` | Actionable failure |
+
+- Add request logging middleware to the http4s server — log method, path, status, and duration for every request. http4s has built-in `Logger` middleware for this.
+
+### Part B: Application Metrics
+
+**What to track:**
+- **Poller metrics:** streams fetched per poll, new streams detected, notifications broadcast, poll duration, Twitch API errors
+- **HTTP metrics:** request count by route, response status codes, request latency
+- **Session metrics:** active sessions, logins/logouts
+- **SSE metrics:** active SSE connections, notifications delivered
+
+**Recommended approach:**
+- Add `http4s-prometheus-metrics` (or `http4s-micrometer`) for automatic HTTP request metrics
+- Add custom counters/gauges in `StreamPoller` and `Routes` for app-specific metrics
+- Expose a `/metrics` endpoint in Prometheus format — Render supports Prometheus scraping, and you can connect a free Grafana Cloud instance for dashboards and alerting
+
+**Files to modify:**
+- `build.sbt` — Add `log4cats-slf4j` and metrics library dependencies
+- `modules/backend/src/main/resources/logback.xml` — New file for log configuration
+- `StreamPoller.scala` — Replace `IO.println` with logger, add poller metrics
+- `Routes.scala` — Replace `IO.println` with logger, add session/SSE metrics
+- `TwitchServer.scala` — Replace `IO.println` with logger, wire up metrics middleware and `/metrics` endpoint
+
+**When to implement:** After deployment (Step 6). Logging (Part A) is higher priority — do it first. Metrics (Part B) can come later once you want visibility into production behavior.
+
+---
+
+## Step 8 (Future): Web Push Notifications
 
 **Why:** Currently, users must keep the browser tab open to receive SSE notifications. Web Push (via the Push API + service worker) delivers notifications even when the tab is closed. This is a significant feature addition and can be done after the initial deployment.
 
@@ -247,3 +301,5 @@ After each step, verify:
 4. **Step 4:** Verify cookies have `Secure` and `SameSite` attributes when accessed over HTTPS. Confirm OAuth state validation still works.
 5. **Step 5:** `docker build` succeeds. `docker run` with env vars starts the app and serves the frontend correctly (JS loads, CSS loads, app is interactive).
 6. **Step 6:** Visit `https://<your-domain>` (or `https://<app-name>.onrender.com`), log in with Twitch, follow categories, receive notifications.
+7. **Step 7a:** Confirm logs show structured output with timestamps and levels. Verify `debug` logs are suppressed in production config. Check that request logging middleware captures method, path, status, and duration.
+8. **Step 7b:** Hit `/metrics` and confirm Prometheus-format output. Verify poller gauges update after a poll cycle. Connect Grafana Cloud and confirm data flows.
