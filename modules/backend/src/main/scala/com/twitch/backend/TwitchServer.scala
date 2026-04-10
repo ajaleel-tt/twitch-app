@@ -34,9 +34,18 @@ object TwitchServer extends IOApp.Simple:
   def run: IO[Unit] =
     val rawDbUrl = sys.env.getOrElse("DATABASE_URL",
       "jdbc:h2:./twitch_app_db;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE")
-    val dbUrl = if rawDbUrl.startsWith("postgres://") || rawDbUrl.startsWith("postgresql://") then
-      rawDbUrl.replaceFirst("^postgres(ql)?://", "jdbc:postgresql://")
-    else rawDbUrl
+
+    // Parse postgres://user:pass@host[:port]/db into JDBC URL + separate credentials
+    case class ParsedDb(jdbcUrl: String, user: Option[String], password: Option[String])
+    val parsed: ParsedDb =
+      val renderPattern = """^postgres(?:ql)?://([^:]+):([^@]+)@([^/]+)/(.+)$""".r
+      rawDbUrl match
+        case renderPattern(user, pass, host, db) =>
+          val hostPort = if host.contains(":") then host else s"$host:5432"
+          ParsedDb(s"jdbc:postgresql://$hostPort/$db", Some(user), Some(pass))
+        case _ => ParsedDb(rawDbUrl, None, None)
+
+    val dbUrl = parsed.jdbcUrl
     val isPostgres = dbUrl.startsWith("jdbc:postgresql")
     val dialect = if isPostgres then SqlDialect.Postgres else SqlDialect.H2
 
@@ -45,10 +54,8 @@ object TwitchServer extends IOApp.Simple:
         val hikariConfig = new HikariConfig()
         hikariConfig.setDriverClassName("org.postgresql.Driver")
         hikariConfig.setJdbcUrl(dbUrl)
-        // If DATABASE_USER/DATABASE_PASS are set, use them explicitly.
-        // Otherwise let HikariCP parse credentials from the JDBC URL.
-        sys.env.get("DATABASE_USER").foreach(hikariConfig.setUsername)
-        sys.env.get("DATABASE_PASS").foreach(hikariConfig.setPassword)
+        parsed.user.orElse(sys.env.get("DATABASE_USER")).foreach(hikariConfig.setUsername)
+        parsed.password.orElse(sys.env.get("DATABASE_PASS")).foreach(hikariConfig.setPassword)
         HikariTransactor.fromHikariConfig[IO](hikariConfig)
       else
         for {
