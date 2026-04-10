@@ -32,8 +32,11 @@ object TwitchServer extends IOApp.Simple:
   private val settings = AppSettings.load
 
   def run: IO[Unit] =
-    val dbUrl = sys.env.getOrElse("DATABASE_URL",
+    val rawDbUrl = sys.env.getOrElse("DATABASE_URL",
       "jdbc:h2:./twitch_app_db;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE")
+    val dbUrl = if rawDbUrl.startsWith("postgres://") || rawDbUrl.startsWith("postgresql://") then
+      rawDbUrl.replaceFirst("^postgres(ql)?://", "jdbc:postgresql://")
+    else rawDbUrl
     val isPostgres = dbUrl.startsWith("jdbc:postgresql")
     val dialect = if isPostgres then SqlDialect.Postgres else SqlDialect.H2
 
