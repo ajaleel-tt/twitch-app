@@ -73,6 +73,7 @@ Tables are created automatically on first startup. To stop and remove the contai
 | `BASE_URL` | No | `http://localhost:8080` | Public URL (sets redirect URI and cookie security) |
 | `PORT` | No | `8080` | Server listen port |
 | `STATIC_DIR` | No | `./modules/frontend` | Path to static assets directory |
+| `SENDGRID_API_KEY` | No | — | SendGrid API key (enables welcome emails; see [DEPLOY_PLAN.md](DEPLOY_PLAN.md)) |
 
 ### Running with Docker
 

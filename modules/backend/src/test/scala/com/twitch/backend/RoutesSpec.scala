@@ -27,7 +27,9 @@ class RoutesSpec extends CatsEffectSuite:
     parallelCategories = 5,
     streamsPageSize = 100,
     searchPageSize = 20,
-    sseReconnectDelay = 5.seconds
+    sseReconnectDelay = 5.seconds,
+    emailFrom = "test@example.com",
+    emailFromName = "Test App"
   )
   private val testCategory = TwitchCategory("cat1", "Test Game", "https://img.test/art.jpg")
 
@@ -77,7 +79,8 @@ class RoutesSpec extends CatsEffectSuite:
         pendingOAuthStates = pendingStates,
         db = db,
         notificationQueues = notifQueues,
-        settings = testSettings
+        settings = testSettings,
+        emailService = None
       )
     yield TestEnv(routes, db, pendingStates, notifQueues)
   )

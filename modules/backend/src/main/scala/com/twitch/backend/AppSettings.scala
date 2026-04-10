@@ -9,7 +9,9 @@ case class AppSettings(
     parallelCategories: Int,
     streamsPageSize: Int,
     searchPageSize: Int,
-    sseReconnectDelay: FiniteDuration
+    sseReconnectDelay: FiniteDuration,
+    emailFrom: String,
+    emailFromName: String
 )
 
 object AppSettings:
@@ -21,5 +23,7 @@ object AppSettings:
       parallelCategories = config.getInt("poller.parallel-categories"),
       streamsPageSize = config.getInt("poller.streams-page-size"),
       searchPageSize = config.getInt("search.page-size"),
-      sseReconnectDelay = config.getDuration("sse.reconnect-delay").toMillis.millis
+      sseReconnectDelay = config.getDuration("sse.reconnect-delay").toMillis.millis,
+      emailFrom = config.getString("email.from"),
+      emailFromName = config.getString("email.from-name")
     )
