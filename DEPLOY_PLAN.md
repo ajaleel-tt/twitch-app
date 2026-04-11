@@ -311,20 +311,6 @@ To disable emails without a redeploy: remove the `SENDGRID_API_KEY` env var and 
 
 ---
 
-## Step 9 (Future): Web Push Notifications
-
-**Why:** Currently, users must keep the browser tab open to receive SSE notifications. Web Push (via the Push API + service worker) delivers notifications even when the tab is closed. This is a significant feature addition and can be done after the initial deployment.
-
-**High-level approach:**
-- Add a service worker to the frontend that subscribes to push notifications
-- Store push subscriptions (endpoint + keys) in a new DB table
-- When the poller detects a new stream, send push notifications via a push service (e.g. web-push library) in addition to SSE
-- This requires generating VAPID keys and serving the public key to the frontend
-
-**This step is optional for initial launch** — SSE notifications work fine as long as users keep the tab open.
-
----
-
 ## Verification
 
 After each step, verify:
