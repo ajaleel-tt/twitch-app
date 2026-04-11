@@ -62,7 +62,7 @@ object LoginSection:
             cls := "flex flex-row flex-wrap justify-center gap-3",
             contactLink("Discord", "https://discord.gg/pk2McPvsb9"),
             contactLink("Twitch", "https://twitch.tv/aabil11"),
-            contactLink("Email", "mailto:najm555@gmail.com")
+            contactLink("Email", "mailto:aabil11@twitchnotify.com")
           )
         )
       )
