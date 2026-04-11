@@ -137,10 +137,10 @@ class Routes(
         existingUser <- db.findUser(user.id)
         _ <- existingUser match
           case None =>
-            db.insertUser(user.id, user.email) *>
+            db.insertUser(user.id, user.login, user.display_name, user.email) *>
               sendWelcomeEmailIfNeeded(user)
           case Some(existing) =>
-            db.updateLastLogin(user.id, user.email) *>
+            db.updateLastLogin(user.id, user.login, user.display_name, user.email) *>
               (if !existing.welcomeEmailSent then sendWelcomeEmailIfNeeded(user) else IO.unit)
         sessionId = UUID.randomUUID().toString
         tokenExpiresAt = Some(Instant.now().plusSeconds(tokenResponse.expires_in.toLong))

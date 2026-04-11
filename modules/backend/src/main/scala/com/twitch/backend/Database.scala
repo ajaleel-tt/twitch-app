@@ -46,13 +46,21 @@ class Database(xa: Transactor[IO], dialect: SqlDialect = SqlDialect.H2):
     val createUsers = sql"""
       CREATE TABLE IF NOT EXISTS users (
         user_id VARCHAR PRIMARY KEY,
+        login VARCHAR,
+        display_name VARCHAR,
         email VARCHAR,
         welcome_email_sent BOOLEAN NOT NULL DEFAULT FALSE,
         created_at BIGINT NOT NULL,
         last_login_at BIGINT NOT NULL
       )
     """.update.run
-    (createFollowed *> createTagFilters *> createSessions *> createUsers).transact(xa).void
+    val migrateUsersAddLogin = sql"""
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS login VARCHAR
+    """.update.run
+    val migrateUsersAddDisplayName = sql"""
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS display_name VARCHAR
+    """.update.run
+    (createFollowed *> createTagFilters *> createSessions *> createUsers *> migrateUsersAddLogin *> migrateUsersAddDisplayName).transact(xa).void
 
   def getFollowed(userId: String): IO[List[TwitchCategory]] =
     sql"SELECT category_id, name, box_art_url FROM followed_categories WHERE user_id = $userId"
@@ -117,22 +125,22 @@ class Database(xa: Transactor[IO], dialect: SqlDialect = SqlDialect.H2):
   // ── User persistence ────────────────────────────────────────────────
 
   def findUser(userId: String): IO[Option[UserRow]] =
-    sql"SELECT user_id, email, welcome_email_sent, created_at, last_login_at FROM users WHERE user_id = $userId"
+    sql"SELECT user_id, login, display_name, email, welcome_email_sent, created_at, last_login_at FROM users WHERE user_id = $userId"
       .query[UserRow]
       .option
       .transact(xa)
 
-  def insertUser(userId: String, email: Option[String]): IO[Unit] =
+  def insertUser(userId: String, login: String, displayName: String, email: Option[String]): IO[Unit] =
     val now = Instant.now().getEpochSecond
     sql"""
-      INSERT INTO users (user_id, email, welcome_email_sent, created_at, last_login_at)
-      VALUES ($userId, $email, false, $now, $now)
+      INSERT INTO users (user_id, login, display_name, email, welcome_email_sent, created_at, last_login_at)
+      VALUES ($userId, $login, $displayName, $email, false, $now, $now)
     """.update.run.transact(xa).void
 
-  def updateLastLogin(userId: String, email: Option[String]): IO[Unit] =
+  def updateLastLogin(userId: String, login: String, displayName: String, email: Option[String]): IO[Unit] =
     val now = Instant.now().getEpochSecond
     sql"""
-      UPDATE users SET last_login_at = $now, email = COALESCE($email, email)
+      UPDATE users SET last_login_at = $now, login = $login, display_name = $displayName, email = COALESCE($email, email)
       WHERE user_id = $userId
     """.update.run.transact(xa).void
 
@@ -175,6 +183,8 @@ class Database(xa: Transactor[IO], dialect: SqlDialect = SqlDialect.H2):
 
 case class UserRow(
     userId: String,
+    login: Option[String],
+    displayName: Option[String],
     email: Option[String],
     welcomeEmailSent: Boolean,
     createdAt: Long,

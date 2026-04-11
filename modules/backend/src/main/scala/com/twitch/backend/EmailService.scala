@@ -63,7 +63,7 @@ class EmailService(
        |<ul style="font-size: 14px; line-height: 1.8; color: #666;">
        |  <li><a href="https://discord.gg/pk2McPvsb9" style="color: #9146FF;">Join our Discord server</a></li>
        |  <li><a href="https://twitch.tv/aabil11" style="color: #9146FF;">Catch me on Twitch</a></li>
-       |  <li><a href="mailto:najm555@gmail.com" style="color: #9146FF;">Email me</a></li>
+       |  <li><a href="mailto:aabil11@twitchnotify.com" style="color: #9146FF;">Email me</a></li>
        |</ul>
        |<p>Happy watching!</p>
        |</body></html>""".stripMargin
