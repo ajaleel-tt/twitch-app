@@ -24,7 +24,7 @@ class EmailService(
         "email" -> fromEmail.asJson,
         "name" -> fromName.asJson
       ),
-      "subject" -> s"Welcome to Twitch App, $displayName!".asJson,
+      "subject" -> s"Welcome to Twitch Category Tracker, $displayName!".asJson,
       "content" -> Json.arr(Json.obj(
         "type" -> "text/html".asJson,
         "value" -> welcomeHtml(displayName).asJson
@@ -50,9 +50,20 @@ class EmailService(
     }
 
   private def welcomeHtml(displayName: String): String =
-    s"""<html><body style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
-       |<h1 style="color: #9146FF;">Welcome to Twitch App, $displayName!</h1>
-       |<p>Thanks for signing up. We hope you enjoy tracking your favorite Twitch categories and getting notified when streamers go live.</p>
-       |<p>Have feedback or ideas? <a href="https://discord.gg/Tk2XVDUh">Join our Discord server</a> and let us know!</p>
+    s"""<html><body style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; color: #333;">
+       |<h1 style="color: #9146FF;">Welcome to Twitch Category Tracker, $displayName!</h1>
+       |<p>Thanks for signing up! Here's how to get the most out of the app:</p>
+       |<ol style="line-height: 1.8;">
+       |  <li><strong>Allow notifications</strong> &mdash; make sure you give the site permission to send browser notifications.</li>
+       |  <li><strong>Search & follow categories</strong> &mdash; find your favorite Twitch categories and follow them.</li>
+       |  <li><strong>Keep the tab open</strong> &mdash; you'll get notified when streams go live! Pin the tab so you don't close it by accident.</li>
+       |</ol>
+       |<hr style="border: none; border-top: 1px solid #eee; margin: 24px 0;">
+       |<p style="font-size: 14px; color: #666;">Have feedback or ideas? Reach out anytime:</p>
+       |<ul style="font-size: 14px; line-height: 1.8; color: #666;">
+       |  <li><a href="https://discord.gg/pk2McPvsb9" style="color: #9146FF;">Join our Discord server</a></li>
+       |  <li><a href="https://twitch.tv/aabil11" style="color: #9146FF;">Catch me on Twitch</a></li>
+       |  <li><a href="mailto:najm555@gmail.com" style="color: #9146FF;">Email me</a></li>
+       |</ul>
        |<p>Happy watching!</p>
        |</body></html>""".stripMargin
