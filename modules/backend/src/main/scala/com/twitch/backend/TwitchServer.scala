@@ -75,7 +75,10 @@ object TwitchServer extends IOApp.Simple:
 
           val staticDir = sys.env.getOrElse("STATIC_DIR", "./modules/frontend")
 
-          val routes = new Routes(clientId, clientSecret, redirectUri, client, pendingOAuthStates, db, notificationQueues, settings)
+          val emailService = sys.env.get("SENDGRID_API_KEY").map(key =>
+            new EmailService(client, key, settings.emailFrom, settings.emailFromName)
+          )
+          val routes = new Routes(clientId, clientSecret, redirectUri, client, pendingOAuthStates, db, notificationQueues, settings, emailService)
           val frontendService = fileService[IO](FileService.Config(staticDir))
 
           val httpApp = Router(

@@ -70,12 +70,12 @@ object Main extends IOWebApp:
       // Header bar
       div(
         cls := "w-full bg-twitch-dark-card border-b border-gray-800 px-6 py-4 flex items-center justify-center",
-        h1(cls := "text-2xl font-bold text-white tracking-tight", "Twitch App")
+        h1(cls := "text-2xl font-bold text-white tracking-tight", "Twitch Category Tracker")
       ),
       // Main content
       div(
         cls := "w-full max-w-5xl mx-auto px-4 py-8 flex flex-col items-center gap-6",
-        LoginSection.loginButton(state),
+        LoginSection.welcomePage(state),
         LoginSection.statusBar(state),
         loggedInView(state)
       )
@@ -106,6 +106,17 @@ object Main extends IOWebApp:
           }}
         )
       ),
+      // Getting started instructions
+      div(
+        cls := "w-full bg-twitch-dark-card border border-gray-700 rounded-xl p-6 max-w-xl mx-auto",
+        h3(cls := "text-lg font-bold text-white mb-4 text-center", "Getting Started"),
+        div(
+          cls := "flex flex-col gap-3",
+          instructionStep("1", "Allow notifications", "Make sure you give this site permission to send you browser notifications so you know when streams go live."),
+          instructionStep("2", "Follow categories", "Search for Twitch categories below and follow the ones you want to track."),
+          instructionStep("3", "Keep this tab open", "You\u2019ll get notified when your favorite categories go live! Pin this tab so you don\u2019t close it by accident.")
+        )
+      ),
       // Search section
       div(
         cls := "w-full border-t border-gray-800 pt-8",
@@ -126,5 +137,19 @@ object Main extends IOWebApp:
         cls := "w-full border-t border-gray-800 pt-8",
         h3(cls := "text-lg font-bold text-white mb-4 text-center", "Your Followed Categories"),
         FollowedSection.followedCategoriesView(state)
+      )
+    )
+
+  private def instructionStep(num: String, title: String, description: String): Resource[IO, HtmlDivElement[IO]] =
+    div(
+      cls := "flex items-start gap-4",
+      div(
+        cls := "flex-shrink-0 w-8 h-8 bg-twitch-purple rounded-full flex items-center justify-center text-white font-bold text-sm",
+        num
+      ),
+      div(
+        cls := "flex flex-col gap-0.5",
+        p(cls := "text-white font-semibold text-sm", title),
+        p(cls := "text-gray-400 text-sm", description)
       )
     )
