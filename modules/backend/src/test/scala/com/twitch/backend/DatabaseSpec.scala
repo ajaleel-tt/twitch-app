@@ -103,11 +103,13 @@ class DatabaseSpec extends CatsEffectSuite:
 
   test("insertUser and findUser round-trip") {
     for
-      _ <- db.insertUser("newuser1", Some("test@example.com"))
+      _ <- db.insertUser("newuser1", "testlogin1", "TestUser1", Some("test@example.com"))
       found <- db.findUser("newuser1")
     yield {
       assert(found.isDefined)
       assertEquals(found.get.userId, "newuser1")
+      assertEquals(found.get.login, Some("testlogin1"))
+      assertEquals(found.get.displayName, Some("TestUser1"))
       assertEquals(found.get.email, Some("test@example.com"))
       assertEquals(found.get.welcomeEmailSent, false)
     }
@@ -121,7 +123,7 @@ class DatabaseSpec extends CatsEffectSuite:
 
   test("markWelcomeEmailSent updates flag") {
     for
-      _ <- db.insertUser("newuser2", Some("test2@example.com"))
+      _ <- db.insertUser("newuser2", "testlogin2", "TestUser2", Some("test2@example.com"))
       _ <- db.markWelcomeEmailSent("newuser2")
       found <- db.findUser("newuser2")
     yield assertEquals(found.get.welcomeEmailSent, true)
@@ -129,18 +131,18 @@ class DatabaseSpec extends CatsEffectSuite:
 
   test("updateLastLogin updates timestamp") {
     for
-      _ <- db.insertUser("newuser3", Some("test3@example.com"))
+      _ <- db.insertUser("newuser3", "testlogin3", "TestUser3", Some("test3@example.com"))
       before <- db.findUser("newuser3")
       _ <- IO.sleep(scala.concurrent.duration.Duration(10, "ms"))
-      _ <- db.updateLastLogin("newuser3", Some("test3@example.com"))
+      _ <- db.updateLastLogin("newuser3", "testlogin3", "TestUser3", Some("test3@example.com"))
       after <- db.findUser("newuser3")
     yield assert(after.get.lastLoginAt >= before.get.lastLoginAt)
   }
 
   test("updateLastLogin updates email via COALESCE") {
     for
-      _ <- db.insertUser("newuser4", None)
-      _ <- db.updateLastLogin("newuser4", Some("new@example.com"))
+      _ <- db.insertUser("newuser4", "testlogin4", "TestUser4", None)
+      _ <- db.updateLastLogin("newuser4", "testlogin4", "TestUser4", Some("new@example.com"))
       found <- db.findUser("newuser4")
     yield assertEquals(found.get.email, Some("new@example.com"))
   }
