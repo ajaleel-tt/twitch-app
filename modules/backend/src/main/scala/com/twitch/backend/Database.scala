@@ -43,7 +43,16 @@ class Database(xa: Transactor[IO], dialect: SqlDialect = SqlDialect.H2):
         created_at BIGINT NOT NULL
       )
     """.update.run
-    (createFollowed *> createTagFilters *> createSessions).transact(xa).void
+    val createUsers = sql"""
+      CREATE TABLE IF NOT EXISTS users (
+        user_id VARCHAR PRIMARY KEY,
+        email VARCHAR,
+        welcome_email_sent BOOLEAN NOT NULL DEFAULT FALSE,
+        created_at BIGINT NOT NULL,
+        last_login_at BIGINT NOT NULL
+      )
+    """.update.run
+    (createFollowed *> createTagFilters *> createSessions *> createUsers).transact(xa).void
 
   def getFollowed(userId: String): IO[List[TwitchCategory]] =
     sql"SELECT category_id, name, box_art_url FROM followed_categories WHERE user_id = $userId"
@@ -105,6 +114,32 @@ class Database(xa: Transactor[IO], dialect: SqlDialect = SqlDialect.H2):
     sql"DELETE FROM tag_filters WHERE user_id = $userId AND filter_type = $filterType AND tag = $normalizedTag"
       .update.run.transact(xa).void
 
+  // ── User persistence ────────────────────────────────────────────────
+
+  def findUser(userId: String): IO[Option[UserRow]] =
+    sql"SELECT user_id, email, welcome_email_sent, created_at, last_login_at FROM users WHERE user_id = $userId"
+      .query[UserRow]
+      .option
+      .transact(xa)
+
+  def insertUser(userId: String, email: Option[String]): IO[Unit] =
+    val now = Instant.now().getEpochSecond
+    sql"""
+      INSERT INTO users (user_id, email, welcome_email_sent, created_at, last_login_at)
+      VALUES ($userId, $email, false, $now, $now)
+    """.update.run.transact(xa).void
+
+  def updateLastLogin(userId: String, email: Option[String]): IO[Unit] =
+    val now = Instant.now().getEpochSecond
+    sql"""
+      UPDATE users SET last_login_at = $now, email = COALESCE($email, email)
+      WHERE user_id = $userId
+    """.update.run.transact(xa).void
+
+  def markWelcomeEmailSent(userId: String): IO[Unit] =
+    sql"UPDATE users SET welcome_email_sent = true WHERE user_id = $userId"
+      .update.run.transact(xa).void
+
   // ── Session persistence ─────────────────────────────────────────────
 
   def createSession(
@@ -137,6 +172,14 @@ class Database(xa: Transactor[IO], dialect: SqlDialect = SqlDialect.H2):
   def deleteSession(sessionId: String): IO[Unit] =
     sql"DELETE FROM sessions WHERE session_id = $sessionId"
       .update.run.transact(xa).void
+
+case class UserRow(
+    userId: String,
+    email: Option[String],
+    welcomeEmailSent: Boolean,
+    createdAt: Long,
+    lastLoginAt: Long
+)
 
 case class SessionRow(
     sessionId: String,

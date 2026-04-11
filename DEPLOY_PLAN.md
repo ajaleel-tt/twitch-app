@@ -278,17 +278,36 @@ paths:
 
 ---
 
-## Step 8 (Future): Web Push Notifications
+## Step 8: Welcome Emails via SendGrid
 
-**Why:** Currently, users must keep the browser tab open to receive SSE notifications. Web Push (via the Push API + service worker) delivers notifications even when the tab is closed. This is a significant feature addition and can be done after the initial deployment.
+**Why:** Send a one-time welcome email when a new user signs up for the first time, thanking them and letting them know how to submit feedback. Without `SENDGRID_API_KEY` set, the app runs normally — emails are simply skipped.
 
-**High-level approach:**
-- Add a service worker to the frontend that subscribes to push notifications
-- Store push subscriptions (endpoint + keys) in a new DB table
-- When the poller detects a new stream, send push notifications via a push service (e.g. web-push library) in addition to SSE
-- This requires generating VAPID keys and serving the public key to the frontend
+### SendGrid Setup (one-time)
 
-**This step is optional for initial launch** — SSE notifications work fine as long as users keep the tab open.
+1. **Create a SendGrid account** at https://sendgrid.com (free tier: 100 emails/day)
+2. **Create an API key**: Settings → API Keys → Create API Key. Select "Restricted Access" with **Mail Send** permission only (principle of least privilege)
+3. **Verify a sender identity** (Settings → Sender Authentication):
+   - **For testing**: Single Sender Verification — verify one email address
+   - **For production**: Domain Authentication — add CNAME DNS records for your domain. This enables SPF/DKIM, improves deliverability, and removes the "via sendgrid.net" label from emails
+
+### Configuration
+
+4. Update `application.conf` — set `email.from` and `email.from-name` to match your verified sender identity
+5. Add `SENDGRID_API_KEY` to your Render web service environment variables (or equivalent in your hosting platform)
+
+### Database
+
+6. No manual migration needed — `CREATE TABLE IF NOT EXISTS users` runs automatically on startup via `initDb`
+
+### Verification
+
+7. Deploy and log in as a new user — check server logs for email send confirmation
+8. Verify `welcome_email_sent = true` in the `users` table
+9. Log in again — verify no duplicate email is sent
+
+### Rollback
+
+To disable emails without a redeploy: remove the `SENDGRID_API_KEY` env var and restart.
 
 ---
 
@@ -303,3 +322,4 @@ After each step, verify:
 6. **Step 6:** Visit `https://<your-domain>` (or `https://<app-name>.onrender.com`), log in with Twitch, follow categories, receive notifications.
 7. **Step 7a:** Confirm logs show structured output with timestamps and levels. Verify `debug` logs are suppressed in production config. Check that request logging middleware captures method, path, status, and duration.
 8. **Step 7b:** Hit `/metrics` and confirm Prometheus-format output. Verify poller gauges update after a poll cycle. Connect Grafana Cloud and confirm data flows.
+9. **Step 8:** Set `SENDGRID_API_KEY`, log in as a new user, confirm welcome email arrives. Log in again, confirm no duplicate. Remove env var, restart, confirm app works without it.

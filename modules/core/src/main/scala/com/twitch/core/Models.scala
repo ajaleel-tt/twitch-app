@@ -14,7 +14,8 @@ case class TwitchUser(
     id: String,
     login: String,
     display_name: String,
-    profile_image_url: String
+    profile_image_url: String,
+    email: Option[String] = None
 ) derives Codec.AsObject
 
 case class TwitchUsersResponse(

@@ -33,10 +33,24 @@ class Routes(
     pendingOAuthStates: Ref[IO, Set[String]],
     db: Database,
     notificationQueues: Ref[IO, Map[String, (String, Queue[IO, StreamNotification])]],
-    settings: AppSettings
+    settings: AppSettings,
+    emailService: Option[EmailService]
 ):
 
   private val secureCookies = redirectUri.startsWith("https")
+
+  private def sendWelcomeEmailIfNeeded(user: TwitchUser): IO[Unit] =
+    (user.email, emailService) match
+      case (Some(email), Some(es)) =>
+        es.sendWelcomeEmail(email, user.display_name)
+          .flatMap(_ => db.markWelcomeEmailSent(user.id))
+          .handleErrorWith(err =>
+            IO.println(s"Failed to send welcome email to ${user.id}: ${err.getMessage}")
+          )
+          .start
+          .void
+      case _ =>
+        IO.println(s"Skipping welcome email for ${user.id} (no email or email service not configured)")
 
   private def getSession(req: Request[IO]): IO[Option[SessionData]] =
     req.cookies.find(_.name == "session_id").map(_.content) match
@@ -120,6 +134,14 @@ class Routes(
         userResponse <- client.expect[TwitchUsersResponse](userReq)
         user = userResponse.data.head
         _ <- IO.println(s"Found user: ${user.display_name}")
+        existingUser <- db.findUser(user.id)
+        _ <- existingUser match
+          case None =>
+            db.insertUser(user.id, user.email) *>
+              sendWelcomeEmailIfNeeded(user)
+          case Some(existing) =>
+            db.updateLastLogin(user.id, user.email) *>
+              (if !existing.welcomeEmailSent then sendWelcomeEmailIfNeeded(user) else IO.unit)
         sessionId = UUID.randomUUID().toString
         tokenExpiresAt = Some(Instant.now().plusSeconds(tokenResponse.expires_in.toLong))
         _ <- db.createSession(sessionId, user, tokenResponse.access_token, tokenResponse.refresh_token, tokenExpiresAt)
