@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <rect width="512" height="512" rx="96" fill="#9146ff"/>
+  <g transform="translate(96, 72) scale(0.625)">
+    <!-- Twitch-style speech bubble shape -->
+    <path d="M51.2 0L0 51.2V460.8h128V512l51.2-51.2h89.6L460.8 368.6V0H51.2z" fill="#fff"/>
+    <path d="M115.2 76.8h51.2v140.8h-51.2V76.8zm140.8 0h51.2v140.8H256V76.8z" fill="#9146ff"/>
+  </g>
+</svg>
