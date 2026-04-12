@@ -58,3 +58,14 @@ modules/frontend/src/main/scala/com/twitch/frontend/scalawind.scala
 *.db
 *.mv.db
 *.trace.db
+
+### Firebase ###
+firebase/
+
+### Capacitor ###
+www/
+ios/
+android/
+
+### Playwright ###
+.playwright-mcp/

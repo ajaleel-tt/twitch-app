@@ -235,6 +235,25 @@ class Routes(
           case None => Forbidden("Not logged in")
         }
       }
+    case req @ POST -> Root / "push" / "register" =>
+      req.as[PushRegisterRequest].flatMap { body =>
+        getSession(req).flatMap {
+          case Some(data) =>
+            if body.platform != "ios" && body.platform != "android" && body.platform != "web" then
+              BadRequest("platform must be 'ios', 'android', or 'web'")
+            else
+              db.savePushSubscription(data.user.id, body.token, body.platform) *> Ok("Registered")
+          case None => Forbidden("Not logged in")
+        }
+      }
+    case req @ POST -> Root / "push" / "unregister" =>
+      req.as[PushUnregisterRequest].flatMap { body =>
+        getSession(req).flatMap {
+          case Some(_) =>
+            db.deletePushSubscription(body.token) *> Ok("Unregistered")
+          case None => Forbidden("Not logged in")
+        }
+      }
     case req @ GET -> Root / "notifications" / "stream" =>
       getSession(req).flatMap {
         case None => Forbidden("Not logged in")
