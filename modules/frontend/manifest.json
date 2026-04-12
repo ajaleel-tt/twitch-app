@@ -1,0 +1,24 @@
+{
+  "name": "Twitch Category Tracker",
+  "short_name": "TwitchTracker",
+  "description": "Get notified when your favorite Twitch categories go live",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0e0e10",
+  "theme_color": "#9146ff",
+  "orientation": "any",
+  "icons": [
+    {
+      "src": "/icons/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
+    }
+  ]
+}
