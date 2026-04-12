@@ -85,6 +85,18 @@ object ApiClient:
       .withContentType(`Content-Type`(MediaType.application.json))
     httpClient.expect[String](req).void
 
+  def registerPushToken(token: String, platform: String): IO[Unit] =
+    val req = Http4sRequest[IO](Method.POST, Uri.unsafeFromString("/api/push/register"))
+      .withEntity(PushRegisterRequest(token, platform).asJson.noSpaces)
+      .withContentType(`Content-Type`(MediaType.application.json))
+    httpClient.expect[String](req).void.handleError(_ => ())
+
+  def unregisterPushToken(token: String): IO[Unit] =
+    val req = Http4sRequest[IO](Method.POST, Uri.unsafeFromString("/api/push/unregister"))
+      .withEntity(PushUnregisterRequest(token).asJson.noSpaces)
+      .withContentType(`Content-Type`(MediaType.application.json))
+    httpClient.expect[String](req).void.handleError(_ => ())
+
   def streamNotifications(onNotification: StreamNotification => IO[Unit]): IO[Nothing] =
     sseStream
       .evalMap(onNotification)

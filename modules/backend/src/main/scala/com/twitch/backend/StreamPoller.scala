@@ -21,7 +21,8 @@ class StreamPoller(
     notificationQueues: Ref[IO, Map[String, (String, Queue[IO, StreamNotification])]],
     appToken: Ref[IO, Option[String]],
     notifiedStreamIds: Ref[IO, Set[String]],
-    settings: AppSettings
+    settings: AppSettings,
+    pushService: Option[PushNotificationService]
 ):
 
   private def fetchAppToken: IO[String] =
@@ -78,19 +79,45 @@ class StreamPoller(
   private def broadcastNotifications(notifications: List[StreamNotification]): IO[Unit] =
     for
       queues <- notificationQueues.get
-      userIds = queues.values.map(_._1).toSet
-      followedByUser <- userIds.toList.traverse(uid => db.getFollowed(uid).map(cats => uid -> cats.map(_.id).toSet))
+      sseUserIds = queues.values.map(_._1).toSet
+      followedByUser <- sseUserIds.toList.traverse(uid => db.getFollowed(uid).map(cats => uid -> cats.map(_.id).toSet))
       followedMap = followedByUser.toMap
-      filtersByUser <- userIds.toList.traverse(uid => db.getTagFilters(uid).map(filters => uid -> filters))
+      filtersByUser <- sseUserIds.toList.traverse(uid => db.getTagFilters(uid).map(filters => uid -> filters))
       filtersMap = filtersByUser.toMap
       byCategoryId = notifications.groupBy(_.categoryId)
+      // SSE delivery
       _ <- queues.values.toList.traverse_ { case (userId, queue) =>
         val userCategoryIds = followedMap.getOrElse(userId, Set.empty)
         val relevantNotifications = userCategoryIds.toList.flatMap(id => byCategoryId.getOrElse(id, Nil))
         val filtered = StreamLogic.applyTagFilters(relevantNotifications, filtersMap.getOrElse(userId, Nil))
         filtered.traverse_(queue.offer)
       }
+      // Push notification delivery (fire-and-forget)
+      _ <- pushService.fold(IO.unit) { ps =>
+        sendPushNotifications(ps, notifications, followedMap, filtersMap).start.void
+      }
     yield ()
+
+  private def sendPushNotifications(
+      ps: PushNotificationService,
+      notifications: List[StreamNotification],
+      followedMap: Map[String, Set[String]],
+      filtersMap: Map[String, List[com.twitch.core.TagFilter]]
+  ): IO[Unit] =
+    val byCategoryId = notifications.groupBy(_.categoryId)
+    val allFollowingUserIds = followedMap.filter { case (_, catIds) =>
+      catIds.exists(byCategoryId.contains)
+    }.keySet
+    db.getPushSubscriptionsForUsers(allFollowingUserIds).flatMap { subs =>
+      val subsByUser = subs.groupBy(_.userId)
+      subsByUser.toList.traverse_ { case (userId, userSubs) =>
+        val userCategoryIds = followedMap.getOrElse(userId, Set.empty)
+        val relevantNotifications = userCategoryIds.toList.flatMap(id => byCategoryId.getOrElse(id, Nil))
+        val filtered = StreamLogic.applyTagFilters(relevantNotifications, filtersMap.getOrElse(userId, Nil))
+        if filtered.nonEmpty then ps.sendBatch(userSubs, filtered)
+        else IO.unit
+      }
+    }.handleErrorWith(e => IO.println(s"Push notification error: ${e.getMessage}"))
 
   // First poll seeds the set without sending notifications so we don't
   // flood the user with every stream that happens to be live at startup.
@@ -137,9 +164,10 @@ object StreamPoller:
       client: Client[IO],
       db: Database,
       notificationQueues: Ref[IO, Map[String, (String, Queue[IO, StreamNotification])]],
-      settings: AppSettings
+      settings: AppSettings,
+      pushService: Option[PushNotificationService] = None
   ): IO[StreamPoller] =
     for
       tokenRef <- IO.ref(Option.empty[String])
       notifiedRef <- IO.ref(Set.empty[String])
-    yield new StreamPoller(clientId, clientSecret, client, db, notificationQueues, tokenRef, notifiedRef, settings)
+    yield new StreamPoller(clientId, clientSecret, client, db, notificationQueues, tokenRef, notifiedRef, settings, pushService)
