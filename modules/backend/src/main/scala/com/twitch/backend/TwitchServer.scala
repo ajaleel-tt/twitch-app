@@ -78,23 +78,34 @@ object TwitchServer extends IOApp.Simple:
           val emailService = sys.env.get("SENDGRID_API_KEY").map(key =>
             new EmailService(client, key, settings.emailFrom, settings.emailFromName)
           )
-          val routes = new Routes(clientId, clientSecret, redirectUri, client, pendingOAuthStates, db, notificationQueues, settings, emailService)
+
+          val pushServiceIO: IO[Option[PushNotificationService]] =
+            sys.env.get("FCM_SERVICE_ACCOUNT_KEY") match
+              case Some(keyPath) =>
+                ServiceAccountKey.fromFile(keyPath).map { key =>
+                  Some(new PushNotificationService(client, key.projectId, key, settings.pushParallelSends, db))
+                }.handleErrorWith { err =>
+                  IO.println(s"Warning: Failed to load FCM service account key: ${err.getMessage}").as(None)
+                }
+              case None =>
+                IO.println("Push notifications disabled (FCM_SERVICE_ACCOUNT_KEY not set)").as(None)
+
           val frontendService = fileService[IO](FileService.Config(staticDir))
 
-          val httpApp = Router(
-            "/api" -> routes.apiRoutes,
-            "/" -> routes.authRoutes,
-            "/" -> HttpRoutes.of[IO] {
-              case req @ GET -> Root =>
-                StaticFile.fromPath(fs2.io.file.Path(s"$staticDir/index.html"), Some(req)).getOrElseF(NotFound())
-            },
-            "/" -> frontendService
-          ).orNotFound
-
-          val corsApp = CORS.policy.withAllowOriginAll(httpApp)
-
           for
-            poller <- StreamPoller.make(clientId, clientSecret, client, db, notificationQueues, settings)
+            pushService <- pushServiceIO
+            routes = new Routes(clientId, clientSecret, redirectUri, client, pendingOAuthStates, db, notificationQueues, settings, emailService)
+            httpApp = Router(
+              "/api" -> routes.apiRoutes,
+              "/" -> routes.authRoutes,
+              "/" -> HttpRoutes.of[IO] {
+                case req @ GET -> Root =>
+                  StaticFile.fromPath(fs2.io.file.Path(s"$staticDir/index.html"), Some(req)).getOrElseF(NotFound())
+              },
+              "/" -> frontendService
+            ).orNotFound
+            corsApp = CORS.policy.withAllowOriginAll(httpApp)
+            poller <- StreamPoller.make(clientId, clientSecret, client, db, notificationQueues, settings, pushService)
             _ <- (
               poller.start.void,
               IO.println(s"Server started at $baseUrl") *>

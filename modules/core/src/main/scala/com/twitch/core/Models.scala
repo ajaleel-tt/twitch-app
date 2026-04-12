@@ -90,3 +90,12 @@ case class AddTagFilterRequest(
     filterType: String,
     tag: String
 ) derives Codec.AsObject
+
+case class PushRegisterRequest(
+    token: String,
+    platform: String
+) derives Codec.AsObject
+
+case class PushUnregisterRequest(
+    token: String
+) derives Codec.AsObject

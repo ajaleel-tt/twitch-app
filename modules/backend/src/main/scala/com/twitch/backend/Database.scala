@@ -4,6 +4,7 @@ import cats.effect.*
 import cats.syntax.all.*
 import doobie.*
 import doobie.implicits.*
+import cats.data.NonEmptyList
 import com.twitch.core.{TwitchCategory, TwitchUser, TagFilter}
 import java.time.Instant
 
@@ -60,7 +61,21 @@ class Database(xa: Transactor[IO], dialect: SqlDialect = SqlDialect.H2):
     val migrateUsersAddDisplayName = sql"""
       ALTER TABLE users ADD COLUMN IF NOT EXISTS display_name VARCHAR
     """.update.run
-    (createFollowed *> createTagFilters *> createSessions *> createUsers *> migrateUsersAddLogin *> migrateUsersAddDisplayName).transact(xa).void
+    val createPushSubscriptions = sql"""
+      CREATE TABLE IF NOT EXISTS push_subscriptions (
+        id VARCHAR PRIMARY KEY,
+        user_id VARCHAR NOT NULL,
+        device_token VARCHAR NOT NULL,
+        platform VARCHAR NOT NULL,
+        created_at BIGINT NOT NULL
+      )
+    """.update.run
+    val createPushUniqueIndex = dialect match
+      case SqlDialect.Postgres =>
+        sql"CREATE UNIQUE INDEX IF NOT EXISTS idx_push_user_token ON push_subscriptions (user_id, device_token)".update.run
+      case SqlDialect.H2 =>
+        sql"CREATE UNIQUE INDEX IF NOT EXISTS idx_push_user_token ON push_subscriptions (user_id, device_token)".update.run
+    (createFollowed *> createTagFilters *> createSessions *> createUsers *> migrateUsersAddLogin *> migrateUsersAddDisplayName *> createPushSubscriptions *> createPushUniqueIndex).transact(xa).void
 
   def getFollowed(userId: String): IO[List[TwitchCategory]] =
     sql"SELECT category_id, name, box_art_url FROM followed_categories WHERE user_id = $userId"
@@ -148,6 +163,39 @@ class Database(xa: Transactor[IO], dialect: SqlDialect = SqlDialect.H2):
     sql"UPDATE users SET welcome_email_sent = true WHERE user_id = $userId"
       .update.run.transact(xa).void
 
+  // ── Push subscription persistence ───────────────────────────────────
+
+  def savePushSubscription(userId: String, deviceToken: String, platform: String): IO[Unit] =
+    val id = java.util.UUID.randomUUID().toString
+    val now = Instant.now().getEpochSecond
+    val stmt = dialect match
+      case SqlDialect.Postgres =>
+        sql"""
+          INSERT INTO push_subscriptions (id, user_id, device_token, platform, created_at)
+          VALUES ($id, $userId, $deviceToken, $platform, $now)
+          ON CONFLICT (user_id, device_token) DO UPDATE SET platform = EXCLUDED.platform
+        """
+      case SqlDialect.H2 =>
+        sql"""
+          MERGE INTO push_subscriptions (id, user_id, device_token, platform, created_at)
+          KEY(user_id, device_token)
+          VALUES ($id, $userId, $deviceToken, $platform, $now)
+        """
+    stmt.update.run.transact(xa).void
+
+  def deletePushSubscription(deviceToken: String): IO[Unit] =
+    sql"DELETE FROM push_subscriptions WHERE device_token = $deviceToken"
+      .update.run.transact(xa).void
+
+  def getPushSubscriptionsForUsers(userIds: Set[String]): IO[List[PushSubscriptionRow]] =
+    if userIds.isEmpty then IO.pure(Nil)
+    else
+      val inClause = Fragments.in(fr"user_id", userIds.toList.toNel.get)
+      (fr"SELECT id, user_id, device_token, platform, created_at FROM push_subscriptions WHERE" ++ inClause)
+        .query[PushSubscriptionRow]
+        .to[List]
+        .transact(xa)
+
   // ── Session persistence ─────────────────────────────────────────────
 
   def createSession(
@@ -189,6 +237,14 @@ case class UserRow(
     welcomeEmailSent: Boolean,
     createdAt: Long,
     lastLoginAt: Long
+)
+
+case class PushSubscriptionRow(
+    id: String,
+    userId: String,
+    deviceToken: String,
+    platform: String,
+    createdAt: Long
 )
 
 case class SessionRow(

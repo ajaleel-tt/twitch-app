@@ -11,7 +11,8 @@ case class AppSettings(
     searchPageSize: Int,
     sseReconnectDelay: FiniteDuration,
     emailFrom: String,
-    emailFromName: String
+    emailFromName: String,
+    pushParallelSends: Int
 )
 
 object AppSettings:
@@ -25,5 +26,6 @@ object AppSettings:
       searchPageSize = config.getInt("search.page-size"),
       sseReconnectDelay = config.getDuration("sse.reconnect-delay").toMillis.millis,
       emailFrom = config.getString("email.from"),
-      emailFromName = config.getString("email.from-name")
+      emailFromName = config.getString("email.from-name"),
+      pushParallelSends = config.getInt("push.parallel-sends")
     )
