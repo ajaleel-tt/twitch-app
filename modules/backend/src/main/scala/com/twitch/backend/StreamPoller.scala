@@ -88,7 +88,7 @@ class StreamPoller(
       // SSE delivery
       _ <- queues.values.toList.traverse_ { case (userId, queue) =>
         val userCategoryIds = followedMap.getOrElse(userId, Set.empty)
-        val relevantNotifications = userCategoryIds.toList.flatMap(id => byCategoryId.getOrElse(id, Nil))
+        val relevantNotifications = userCategoryIds.flatMap(id => byCategoryId.getOrElse(id, Nil)).toList
         val filtered = StreamLogic.applyTagFilters(relevantNotifications, filtersMap.getOrElse(userId, Nil))
         filtered.traverse_(queue.offer)
       }
@@ -112,7 +112,7 @@ class StreamPoller(
       val subsByUser = subs.groupBy(_.userId)
       subsByUser.toList.traverse_ { case (userId, userSubs) =>
         val userCategoryIds = followedMap.getOrElse(userId, Set.empty)
-        val relevantNotifications = userCategoryIds.toList.flatMap(id => byCategoryId.getOrElse(id, Nil))
+        val relevantNotifications = userCategoryIds.flatMap(id => byCategoryId.getOrElse(id, Nil)).toList
         val filtered = StreamLogic.applyTagFilters(relevantNotifications, filtersMap.getOrElse(userId, Nil))
         if filtered.nonEmpty then ps.sendBatch(userSubs, filtered)
         else IO.unit
@@ -127,7 +127,7 @@ class StreamPoller(
       _ <- IO.whenA(allCategories.nonEmpty) {
         for
           streams <- withTokenRefresh(token => fetchLiveStreams(token, allCategories.map(_.id)))
-          liveIds = streams.iterator.filter(_.`type` == "live").map(_.id).toSet
+          liveIds = streams.collect { case s if s.`type` == "live" => s.id }.toSet
           _ <- notifiedStreamIds.set(liveIds)
           _ <- IO.println(s"Poller: seeded ${liveIds.size} already-live streams across ${allCategories.size} categories")
         yield ()

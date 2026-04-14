@@ -38,15 +38,16 @@ object StreamLogic:
   ): (List[TwitchStream], Set[String]) =
     val recentStreams = allStreams.filter(recentlyWentLive(_, now, recentWindow))
     val newStreams = recentStreams.filter(s => !alreadyNotified.contains(s.id))
-    val updatedNotified = alreadyNotified ++ allStreams.iterator.map(_.id).toSet
+    val updatedNotified = alreadyNotified | allStreams.map(_.id).toSet
     (newStreams, updatedNotified)
 
   def applyTagFilters(
       notifications: List[StreamNotification],
       filters: List[TagFilter]
   ): List[StreamNotification] =
-    val includeTags = filters.filter(_.filterType == "include").map(_.tag.toLowerCase).toSet
-    val excludeTags = filters.filter(_.filterType == "exclude").map(_.tag.toLowerCase).toSet
+    val (includes, excludes) = filters.partition(_.filterType == "include")
+    val includeTags = includes.map(_.tag.toLowerCase).toSet
+    val excludeTags = excludes.map(_.tag.toLowerCase).toSet
     notifications.filter { n =>
       val streamTags = n.tags.map(_.toLowerCase).toSet
       val passesInclude = includeTags.isEmpty || streamTags.exists(includeTags.contains)
