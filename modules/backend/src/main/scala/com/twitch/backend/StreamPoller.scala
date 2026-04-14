@@ -68,10 +68,10 @@ class StreamPoller(
     categoryIds.parTraverseN(settings.parallelCategories) { categoryId =>
       def go(cursor: Option[String], acc: List[TwitchStream]): IO[List[TwitchStream]] =
         fetchStreamsPage(token, categoryId, cursor).flatMap { resp =>
-          val newAcc = resp.data.reverse ::: acc
+          val newAcc = resp.data ::: acc
           resp.pagination.flatMap(_.cursor) match
             case Some(next) if resp.data.nonEmpty => go(Some(next), newAcc)
-            case _ => IO.pure(newAcc.reverse)
+            case _ => IO.pure(newAcc)
         }
       go(None, Nil)
     }.map(_.flatten)
