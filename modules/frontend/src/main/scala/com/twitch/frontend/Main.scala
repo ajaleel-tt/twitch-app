@@ -7,6 +7,7 @@ import cats.syntax.all.*
 import fs2.concurrent.*
 import fs2.dom.*
 import org.scalajs.dom
+import scala.scalajs.js
 import com.twitch.core.*
 import com.twitch.frontend.components.*
 
@@ -22,6 +23,7 @@ object Main extends IOWebApp:
         ApiClient.fetchTagFilters.flatMap(filters => state.update(_.copy(tagFilters = filters)))
       ).parTupled.toResource
       _ <- startNotificationStream(state).background
+      _ <- initPushNotifications(state).background
       app <- appView(state)
     yield app
 
@@ -63,6 +65,64 @@ object Main extends IOWebApp:
           }
       }
       .compile.drain
+
+  /** Initialize Capacitor push notifications on native platforms.
+    * Waits for a logged-in user, then requests permission, registers
+    * for FCM, and sends the device token to the backend.
+    * On web (non-native), this is a no-op — SSE handles it.
+    */
+  private def initPushNotifications(state: SignallingRef[IO, Model]): IO[Unit] =
+    if !CapacitorPush.isNative then IO.unit
+    else
+      // Wait until we have a logged-in user
+      state.discrete
+        .filter(_.user.isDefined)
+        .take(1)
+        .evalMap { _ =>
+          val setup = for
+            // Request notification permission from the OS
+            perm <- IO.fromPromise(IO(CapacitorPush.requestPermissions()))
+            _ <- IO.whenA(perm.receive == "granted") {
+              // Set up the registration callback before calling register()
+              IO.async_[String] { cb =>
+                val _ = CapacitorPush.onRegistration { token =>
+                  cb(Right(token.value))
+                }
+                val _ = CapacitorPush.onRegistrationError { err =>
+                  cb(Left(new RuntimeException(s"Push registration failed: ${err.error}")))
+                }
+                val _ = CapacitorPush.register()
+              }.flatMap { token =>
+                IO.println(s"FCM token obtained, registering with backend (platform: ${CapacitorPush.platform})") *>
+                  ApiClient.registerPushToken(token, CapacitorPush.platform)
+              }
+            }
+          yield ()
+
+          // Set up handler for notifications received while app is in foreground
+          val foregroundHandler = IO {
+            CapacitorPush.onPushNotificationReceived { notification =>
+              // Foreground notifications are already shown by SSE stream,
+              // but log for debugging
+              dom.console.log(s"Push received in foreground: ${notification.title}")
+            }
+          }
+
+          // Set up handler for when user taps a notification
+          val tapHandler = IO {
+            CapacitorPush.onPushNotificationActionPerformed { action =>
+              val data = action.notification.data
+              if !js.isUndefined(data) then
+                val dynData = data.asInstanceOf[js.Dynamic]
+                val login = dynData.selectDynamic("streamerLogin")
+                if !js.isUndefined(login) then
+                  val _ = dom.window.open(s"https://twitch.tv/${login.asInstanceOf[String]}", "_blank")
+            }
+          }
+
+          setup *> foregroundHandler *> tapHandler
+        }
+        .compile.drain
 
   private def appView(state: SignallingRef[IO, Model]): Resource[IO, HtmlDivElement[IO]] =
     div(

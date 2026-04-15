@@ -80,15 +80,21 @@ object TwitchServer extends IOApp.Simple:
           )
 
           val pushServiceIO: IO[Option[PushNotificationService]] =
-            sys.env.get("FCM_SERVICE_ACCOUNT_KEY") match
-              case Some(keyPath) =>
-                ServiceAccountKey.fromFile(keyPath).map { key =>
+            val keyIO = sys.env.get("FCM_SERVICE_ACCOUNT_JSON") match
+              case Some(json) => ServiceAccountKey.fromJson(json).map(Some(_))
+              case None => sys.env.get("FCM_SERVICE_ACCOUNT_KEY") match
+                case Some(keyPath) => ServiceAccountKey.fromFile(keyPath).map(Some(_))
+                case None => IO.none
+            keyIO.flatMap {
+              case Some(key) =>
+                IO.println("Push notifications enabled").as(
                   Some(new PushNotificationService(client, key.projectId, key, settings.pushParallelSends, db))
-                }.handleErrorWith { err =>
-                  IO.println(s"Warning: Failed to load FCM service account key: ${err.getMessage}").as(None)
-                }
+                )
               case None =>
-                IO.println("Push notifications disabled (FCM_SERVICE_ACCOUNT_KEY not set)").as(None)
+                IO.println("Push notifications disabled (set FCM_SERVICE_ACCOUNT_JSON or FCM_SERVICE_ACCOUNT_KEY)").as(None)
+            }.handleErrorWith { err =>
+              IO.println(s"Warning: Failed to load FCM service account key: ${err.getMessage}").as(None)
+            }
 
           val frontendService = fileService[IO](FileService.Config(staticDir))
 
