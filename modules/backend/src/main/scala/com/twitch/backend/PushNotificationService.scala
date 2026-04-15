@@ -155,21 +155,25 @@ case class ServiceAccountKey(
 )
 
 object ServiceAccountKey:
+  private def parse(content: String, source: String): IO[ServiceAccountKey] =
+    jsonDecode[Json](content) match
+      case Right(json) =>
+        val cursor = json.hcursor
+        (cursor.get[String]("client_email"),
+         cursor.get[String]("private_key"),
+         cursor.get[String]("project_id")) match
+          case (Right(email), Right(key), Right(pid)) =>
+            IO.pure(ServiceAccountKey(email, key, pid))
+          case _ =>
+            IO.raiseError(new RuntimeException(s"Invalid service account key from $source"))
+      case Left(err) =>
+        IO.raiseError(new RuntimeException(s"Failed to parse service account key from $source: ${err.getMessage}"))
+
+  def fromJson(json: String): IO[ServiceAccountKey] =
+    parse(json, "FCM_SERVICE_ACCOUNT_JSON env var")
+
   def fromFile(path: String): IO[ServiceAccountKey] =
     IO.blocking {
       val source = scala.io.Source.fromFile(path)
       try source.mkString finally source.close()
-    }.flatMap { content =>
-      jsonDecode[Json](content) match
-        case Right(json) =>
-          val cursor = json.hcursor
-          (cursor.get[String]("client_email"),
-           cursor.get[String]("private_key"),
-           cursor.get[String]("project_id")) match
-            case (Right(email), Right(key), Right(pid)) =>
-              IO.pure(ServiceAccountKey(email, key, pid))
-            case _ =>
-              IO.raiseError(new RuntimeException(s"Invalid service account key file: $path"))
-        case Left(err) =>
-          IO.raiseError(new RuntimeException(s"Failed to parse service account key: ${err.getMessage}"))
-    }
+    }.flatMap(parse(_, s"file $path"))

@@ -30,6 +30,55 @@ self.addEventListener('activate', (event) => {
   );
 });
 
+// Push: handle FCM push notifications (web PWA fallback)
+self.addEventListener('push', (event) => {
+  if (!event.data) return;
+
+  let payload;
+  try {
+    payload = event.data.json();
+  } catch (e) {
+    payload = { notification: { title: 'Twitch Category Tracker', body: event.data.text() } };
+  }
+
+  const notification = payload.notification || {};
+  const data = payload.data || {};
+
+  const title = notification.title || 'Stream is live!';
+  const options = {
+    body: notification.body || '',
+    icon: '/icons/icon.svg',
+    badge: '/icons/icon.svg',
+    data: data,
+    tag: data.streamerId || 'twitch-notification',
+    renotify: true
+  };
+
+  event.waitUntil(self.registration.showNotification(title, options));
+});
+
+// Notification click: open the stream on Twitch
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+
+  const data = event.notification.data || {};
+  const url = data.streamerLogin
+    ? `https://twitch.tv/${data.streamerLogin}`
+    : '/';
+
+  event.waitUntil(
+    clients.matchAll({ type: 'window', includeUncontrolled: true }).then((windowClients) => {
+      // Focus an existing tab if one is open
+      for (const client of windowClients) {
+        if (client.url.includes('twitch.tv') && 'focus' in client) {
+          return client.focus();
+        }
+      }
+      return clients.openWindow(url);
+    })
+  );
+});
+
 // Fetch: route requests to cache or network
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
