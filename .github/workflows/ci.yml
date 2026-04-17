@@ -12,6 +12,7 @@ on:
       - 'Dockerfile'
       - '.dockerignore'
       - '.github/workflows/**'
+      - 'e2e/**'
   pull_request:
     branches: [master]
     paths:
@@ -23,6 +24,7 @@ on:
       - 'Dockerfile'
       - '.dockerignore'
       - '.github/workflows/**'
+      - 'e2e/**'
 
 jobs:
   build-and-test:
@@ -72,7 +74,7 @@ jobs:
       - name: Run tests
         run: sbt test
 
-  docker-build:
+  docker-build-and-e2e:
     runs-on: ubuntu-latest
     needs: build-and-test
     steps:
@@ -86,5 +88,40 @@ jobs:
         with:
           context: .
           push: false
+          load: true
+          tags: twitch-app:test
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      - name: Start app container
+        run: |
+          docker run -d --name app -p 8080:8080 \
+            -e TWITCH_CLIENT_ID=fake \
+            -e TWITCH_CLIENT_SECRET=fake \
+            twitch-app:test
+          for i in $(seq 1 30); do
+            if curl -s http://localhost:8080 > /dev/null 2>&1; then
+              echo "Server is ready"
+              break
+            fi
+            echo "Waiting for server... ($i)"
+            sleep 2
+          done
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install Playwright
+        run: |
+          npm init -y --prefix e2e
+          npm install --prefix e2e @playwright/test
+          npx --prefix e2e playwright install --with-deps chromium
+
+      - name: Run smoke test
+        run: npx --prefix e2e playwright test --config e2e/playwright.config.ts
+
+      - name: Container logs
+        if: always()
+        run: docker logs app 2>&1 || true
