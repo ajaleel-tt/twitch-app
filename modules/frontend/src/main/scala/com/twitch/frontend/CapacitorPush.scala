@@ -1,18 +1,23 @@
 package com.twitch.frontend
 
 import scala.scalajs.js
+import scala.scalajs.js.annotation.*
 
 object CapacitorPush:
 
-  private def capacitor: js.Dynamic = js.Dynamic.global.Capacitor
-  private def plugin: js.Dynamic = capacitor.Plugins.PushNotifications
+  @js.native
+  @JSGlobal("Capacitor")
+  private object Capacitor extends js.Object:
+    def isNativePlatform(): Boolean = js.native
+    def getPlatform(): String       = js.native
+
+  private def plugin: js.Dynamic = js.Dynamic.global.Capacitor.Plugins.PushNotifications
 
   def isNative: Boolean =
-    !js.isUndefined(js.Dynamic.global.Capacitor) &&
-      capacitor.isNativePlatform().asInstanceOf[Boolean]
+    !js.isUndefined(js.Dynamic.global.Capacitor) && Capacitor.isNativePlatform()
 
   def platform: String =
-    if isNative then capacitor.getPlatform().asInstanceOf[String] else "web"
+    if isNative then Capacitor.getPlatform() else "web"
 
   // ── Result types ──────────────────────────────────────────────────
 
