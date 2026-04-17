@@ -66,6 +66,9 @@ jobs:
       - name: Build project
         run: sbt compile
 
+      - name: Build production JS
+        run: sbt frontend/fullLinkJS
+
       - name: Run tests
         run: sbt test
 
