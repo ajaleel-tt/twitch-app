@@ -66,6 +66,14 @@ jobs:
       - name: Build project
         run: sbt compile
 
+      - name: Check for unsafe @JSGlobal on optional globals
+        run: |
+          if grep -rn '@JSGlobal("Capacitor' modules/frontend/src/; then
+            echo "ERROR: @JSGlobal(\"Capacitor\") causes ReferenceError on web where Capacitor is absent."
+            echo "Use js.Dynamic.global.Capacitor instead for optional platform globals."
+            exit 1
+          fi
+
       - name: Build production JS
         run: sbt frontend/fullLinkJS
 
