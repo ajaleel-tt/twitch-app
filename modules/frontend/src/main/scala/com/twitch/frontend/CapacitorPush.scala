@@ -7,9 +7,12 @@ object CapacitorPush:
   private def capacitor: js.Dynamic = js.Dynamic.global.Capacitor
   private def plugin: js.Dynamic = capacitor.Plugins.PushNotifications
 
+  // typeof is safe for undeclared variables; direct reference throws ReferenceError in strict mode
+  private def capacitorExists: Boolean =
+    js.eval("typeof Capacitor !== 'undefined'").asInstanceOf[Boolean]
+
   def isNative: Boolean =
-    !js.isUndefined(js.Dynamic.global.Capacitor) &&
-      capacitor.isNativePlatform().asInstanceOf[Boolean]
+    capacitorExists && capacitor.isNativePlatform().asInstanceOf[Boolean]
 
   def platform: String =
     if isNative then capacitor.getPlatform().asInstanceOf[String] else "web"
