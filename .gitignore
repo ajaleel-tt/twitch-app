@@ -64,7 +64,14 @@ firebase/
 
 ### Capacitor ###
 www/
-ios/
+ios/*
+!ios/App/
+ios/App/*
+!ios/App/App/
+ios/App/App/*
+!ios/App/App/Assets.xcassets/
+ios/App/App/Assets.xcassets/*
+!ios/App/App/Assets.xcassets/AppIcon.appiconset/
 android/
 
 ### Playwright ###
