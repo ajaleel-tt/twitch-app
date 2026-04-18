@@ -11,8 +11,8 @@ const config: CapacitorConfig = {
     // they run in the native layer, not the WebView.
     url: 'https://twitch-app-grn6.onrender.com',
     cleartext: true,
-    // Keep Twitch OAuth flow inside the WebView instead of opening Chrome
-    allowNavigation: ['id.twitch.tv']
+    // Keep Twitch OAuth flow inside the WebView instead of opening external browser
+    allowNavigation: ['id.twitch.tv', '*.twitch.tv']
   }
 };
 
