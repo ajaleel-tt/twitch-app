@@ -41,3 +41,28 @@ abstract class TwitchPoller(
     getOrRefreshToken.flatMap(f).handleErrorWith { _ =>
       appToken.set(None) *> getOrRefreshToken.flatMap(f)
     }
+
+  protected def buildAuthedRequest(baseUri: Uri, token: String, cursor: Option[String]): Request[IO] =
+    import org.http4s.headers.Authorization
+    import org.typelevel.ci.*
+    val uriWithCursor = cursor.fold(baseUri)(c => baseUri.withQueryParam("after", c))
+    Request[IO](method = Method.GET, uri = uriWithCursor).putHeaders(
+      Authorization(Credentials.Token(AuthScheme.Bearer, token)),
+      Header.Raw(ci"Client-Id", clientId)
+    )
+
+  protected def fetchPaginated[A](
+      fetchPage: (String, Option[String]) => IO[PaginatedResponse[A]]
+  )(token: String): IO[List[A]] =
+    def go(cursor: Option[String], acc: List[A]): IO[List[A]] =
+      fetchPage(token, cursor).flatMap { resp =>
+        val newAcc = acc ::: resp.pageData
+        resp.pageCursor match
+          case Some(next) if resp.pageData.nonEmpty => go(Some(next), newAcc)
+          case _ => IO.pure(newAcc)
+      }
+    go(None, Nil)
+
+  trait PaginatedResponse[A]:
+    def pageData: List[A]
+    def pageCursor: Option[String]

@@ -2,12 +2,9 @@ package com.twitch.backend
 
 import cats.effect.*
 import com.twitch.core.*
-import org.http4s.*
 import org.http4s.circe.CirceEntityDecoder.*
 import org.http4s.client.Client
-import org.http4s.headers.Authorization
 import org.http4s.implicits.*
-import org.typelevel.ci.*
 
 class TopGamesPoller(
     clientId: String,
@@ -21,27 +18,16 @@ class TopGamesPoller(
   private def fetchTopGamesPage(token: String, cursor: Option[String]): IO[TwitchSearchCategoriesResponse] =
     val baseUri = uri"https://api.twitch.tv/helix/games/top"
       .withQueryParam("first", "100")
-    val uriWithCursor = cursor.fold(baseUri)(c => baseUri.withQueryParam("after", c))
-    val req = Request[IO](method = Method.GET, uri = uriWithCursor).putHeaders(
-      Authorization(Credentials.Token(AuthScheme.Bearer, token)),
-      Header.Raw(ci"Client-Id", clientId)
-    )
-    client.expect[TwitchSearchCategoriesResponse](req)
+    client.expect[TwitchSearchCategoriesResponse](buildAuthedRequest(baseUri, token, cursor))
 
   private def fetchAllTopGames(token: String): IO[List[TwitchCategory]] =
-    val target = settings.topGamesCount
-    def go(cursor: Option[String], acc: List[TwitchCategory]): IO[List[TwitchCategory]] =
-      if acc.size >= target then IO.pure(acc.take(target))
-      else
-        fetchTopGamesPage(token, cursor).flatMap { resp =>
-          val newAcc = acc ::: resp.data
-          if newAcc.size >= target then IO.pure(newAcc.take(target))
-          else
-            resp.pagination.flatMap(_.cursor) match
-              case Some(next) if resp.data.nonEmpty => go(Some(next), newAcc)
-              case _ => IO.pure(newAcc)
-        }
-    go(None, Nil)
+    fetchPaginated[TwitchCategory] { (tk, cur) =>
+      fetchTopGamesPage(tk, cur).map { resp =>
+        new PaginatedResponse[TwitchCategory]:
+          def pageData = resp.data
+          def pageCursor = resp.pagination.flatMap(_.cursor)
+      }
+    }(token).map(_.take(settings.topGamesCount))
 
   private def pollOnce: IO[Unit] =
     for
