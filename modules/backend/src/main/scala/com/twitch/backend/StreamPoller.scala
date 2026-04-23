@@ -7,9 +7,7 @@ import cats.effect.implicits.*
 import org.http4s.*
 import org.http4s.client.Client
 import org.http4s.circe.CirceEntityDecoder.*
-import org.http4s.headers.Authorization
 import org.http4s.implicits.*
-import org.typelevel.ci.*
 import java.time.Instant
 import com.twitch.core.*
 
@@ -29,23 +27,17 @@ class StreamPoller(
     val baseUri = uri"https://api.twitch.tv/helix/streams"
       .withQueryParam("game_id", categoryId)
       .withQueryParam("first", settings.streamsPageSize.toString)
-    val uriWithCursor = cursor.fold(baseUri)(c => baseUri.withQueryParam("after", c))
-    val req = Request[IO](method = Method.GET, uri = uriWithCursor).putHeaders(
-      Authorization(Credentials.Token(AuthScheme.Bearer, token)),
-      Header.Raw(ci"Client-Id", clientId)
-    )
-    client.expect[TwitchStreamsResponse](req)
+    client.expect[TwitchStreamsResponse](buildAuthedRequest(baseUri, token, cursor))
 
   private def fetchLiveStreams(token: String, categoryIds: List[String]): IO[List[TwitchStream]] =
     categoryIds.parTraverseN(settings.parallelCategories) { categoryId =>
-      def go(cursor: Option[String], acc: List[TwitchStream]): IO[List[TwitchStream]] =
-        fetchStreamsPage(token, categoryId, cursor).flatMap { resp =>
-          val newAcc = resp.data ::: acc
-          resp.pagination.flatMap(_.cursor) match
-            case Some(next) if resp.data.nonEmpty => go(Some(next), newAcc)
-            case _ => IO.pure(newAcc)
+      fetchPaginated[TwitchStream] { (tk, cur) =>
+        fetchStreamsPage(tk, categoryId, cur).map { resp =>
+          new PaginatedResponse[TwitchStream]:
+            def pageData = resp.data
+            def pageCursor = resp.pagination.flatMap(_.cursor)
         }
-      go(None, Nil)
+      }(token)
     }.map(_.flatten)
 
   private def filteredNotificationsForUser(
