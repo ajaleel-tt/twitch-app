@@ -30,7 +30,9 @@ class RoutesSpec extends CatsEffectSuite:
     sseReconnectDelay = 5.seconds,
     emailFrom = "test@example.com",
     emailFromName = "Test App",
-    pushParallelSends = 10
+    pushParallelSends = 10,
+    topGamesCount = 200,
+    topGamesPollInterval = 3.hours
   )
   private val testCategory = TwitchCategory("cat1", "Test Game", "https://img.test/art.jpg")
 

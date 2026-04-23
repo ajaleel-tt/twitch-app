@@ -1,14 +1,13 @@
 package com.twitch.backend
 
 import cats.effect.*
-import cats.syntax.all.*
+import com.twitch.core.*
 import org.http4s.*
-import org.http4s.client.Client
 import org.http4s.circe.CirceEntityDecoder.*
+import org.http4s.client.Client
 import org.http4s.headers.Authorization
 import org.http4s.implicits.*
 import org.typelevel.ci.*
-import com.twitch.core.*
 
 class TopGamesPoller(
     clientId: String,
