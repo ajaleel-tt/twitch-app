@@ -10,6 +10,57 @@ import com.twitch.core.*
 
 object SearchSection:
 
+  def popularGameWarning(state: SignallingRef[IO, Model]): Resource[IO, HtmlDivElement[IO]] =
+    div(
+      cls <-- state.map { m =>
+        if m.pendingPopularFollow.isDefined then
+          List("fixed", "inset-0", "z-50", "flex", "items-center", "justify-center", "bg-black/60")
+        else List("hidden")
+      },
+      div(
+        cls := "bg-twitch-dark-card border border-gray-700 rounded-2xl shadow-2xl p-6 max-w-md w-full mx-4 flex flex-col gap-4",
+        div(
+          cls := "flex items-center gap-3",
+          span(cls := "text-2xl", "⚠️"),
+          h3(cls := "text-lg font-bold text-white", "Popular Category Warning")
+        ),
+        p(
+          cls := "text-gray-300 text-sm leading-relaxed",
+          state.map { m =>
+            m.pendingPopularFollow match
+              case Some(cat) =>
+                s""""${cat.name}" is a very popular category. Following it may result in a large number of notifications. Are you sure you want to follow it?"""
+              case None => ""
+          }
+        ),
+        div(
+          cls := "flex gap-3 justify-end mt-2",
+          button(
+            cls := "bg-gray-700 hover:bg-gray-600 text-white font-medium px-5 py-2 rounded-lg transition-colors cursor-pointer",
+            "Cancel",
+            onClick --> { _.foreach(_ =>
+              state.update(_.copy(pendingPopularFollow = None))
+            )}
+          ),
+          button(
+            cls := "bg-twitch-purple hover:bg-twitch-purple-dark text-white font-medium px-5 py-2 rounded-lg transition-colors cursor-pointer",
+            "OK, Follow Anyway",
+            onClick --> { _.foreach(_ =>
+              state.get.flatMap { m =>
+                m.pendingPopularFollow match
+                  case Some(cat) =>
+                    state.update(_.copy(pendingPopularFollow = None)) *>
+                      (ApiClient.postFollow(cat).flatMap(_ =>
+                          ApiClient.fetchFollowed.flatMap(cats => state.update(_.copy(followedCategories = cats)))
+                        )).start.void
+                  case None => IO.unit
+              }
+            )}
+          )
+        )
+      )
+    )
+
   private def doSearch(state: SignallingRef[IO, Model]): IO[Unit] =
     state.get.flatMap { m =>
       if m.searchQuery.trim.isEmpty then IO.unit
@@ -156,9 +207,14 @@ object SearchSection:
           },
           "Follow",
           onClick --> { _.foreach(_ =>
-            (ApiClient.postFollow(cat).flatMap(_ =>
-                ApiClient.fetchFollowed.flatMap(cats => state.update(_.copy(followedCategories = cats)))
-              )).start.void
+            state.get.flatMap { m =>
+              if m.topGameIds.contains(cat.id) then
+                state.update(_.copy(pendingPopularFollow = Some(cat)))
+              else
+                (ApiClient.postFollow(cat).flatMap(_ =>
+                    ApiClient.fetchFollowed.flatMap(cats => state.update(_.copy(followedCategories = cats)))
+                  )).start.void
+            }
           )}
         )
       )

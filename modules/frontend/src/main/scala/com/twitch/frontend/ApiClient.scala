@@ -53,6 +53,12 @@ object ApiClient:
       case Left(_)     => None
     }
 
+  def fetchTopGameIds: IO[Set[String]] =
+    httpClient.expect[String](Uri.unsafeFromString("/api/top-game-ids")).attempt.map {
+      case Right(body) => decode[TopGameIdsResponse](body).map(_.gameIds).getOrElse(Set.empty)
+      case Left(_)     => Set.empty
+    }
+
   def postFollow(cat: TwitchCategory): IO[Unit] =
     val req = Http4sRequest[IO](Method.POST, Uri.unsafeFromString("/api/follow"))
       .withEntity(FollowRequest(cat).asJson.noSpaces)
