@@ -23,35 +23,7 @@ class StreamPoller(
     notifiedStreamIds: Ref[IO, Set[String]],
     settings: AppSettings,
     pushService: Option[PushNotificationService]
-):
-
-  private def fetchAppToken: IO[String] =
-    val req = Request[IO](method = Method.POST, uri = uri"https://id.twitch.tv/oauth2/token").withEntity(
-      UrlForm(
-        "client_id" -> clientId,
-        "client_secret" -> clientSecret,
-        "grant_type" -> "client_credentials"
-      )
-    )
-    client.run(req).use { resp =>
-      if resp.status.isSuccess then
-        resp.as[TwitchTokenResponse].map(_.access_token)
-      else
-        resp.bodyText.compile.string.flatMap { body =>
-          IO.raiseError(new RuntimeException(s"Failed to get app token: ${resp.status} $body"))
-        }
-    }
-
-  private def getOrRefreshToken: IO[String] =
-    appToken.get.flatMap {
-      case Some(t) => IO.pure(t)
-      case None    => fetchAppToken.flatTap(t => appToken.set(Some(t)))
-    }
-
-  private def withTokenRefresh[A](f: String => IO[A]): IO[A] =
-    getOrRefreshToken.flatMap(f).handleErrorWith { err =>
-      appToken.set(None) *> getOrRefreshToken.flatMap(f)
-    }
+) extends TwitchPoller(clientId, clientSecret, client, appToken):
 
   private def fetchStreamsPage(token: String, categoryId: String, cursor: Option[String]): IO[TwitchStreamsResponse] =
     val baseUri = uri"https://api.twitch.tv/helix/streams"
