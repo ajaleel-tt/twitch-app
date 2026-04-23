@@ -19,5 +19,7 @@ case class Model(
     newExcludeTag: String = "",
     ignoredStreamers: List[IgnoredStreamer] = Nil,
     streamerSearchQuery: String = "",
-    streamerSearchResults: List[TwitchChannel] = Nil
+    streamerSearchResults: List[TwitchChannel] = Nil,
+    topGameIds: Set[String] = Set.empty,
+    pendingPopularFollow: Option[TwitchCategory] = None
 )

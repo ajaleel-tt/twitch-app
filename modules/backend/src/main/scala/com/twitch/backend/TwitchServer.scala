@@ -112,8 +112,10 @@ object TwitchServer extends IOApp.Simple:
             ).orNotFound
             corsApp = CORS.policy.withAllowOriginAll(httpApp)
             poller <- StreamPoller.make(clientId, clientSecret, client, db, notificationQueues, settings, pushService)
+            topGamesPoller <- TopGamesPoller.make(clientId, clientSecret, client, db, settings)
             _ <- (
               poller.start.void,
+              topGamesPoller.start.void,
               IO.println(s"Server started at $baseUrl") *>
                 EmberServerBuilder
                   .default[IO]

@@ -21,7 +21,8 @@ object Main extends IOWebApp:
         ApiClient.fetchConfig.flatMap(c => state.update(s => s.copy(twitchClientId = c.map(_.twitchClientId)))),
         ApiClient.fetchFollowed.flatMap(cats => state.update(_.copy(followedCategories = cats))),
         ApiClient.fetchTagFilters.flatMap(filters => state.update(_.copy(tagFilters = filters))),
-        ApiClient.fetchIgnoredStreamers.flatMap(streamers => state.update(_.copy(ignoredStreamers = streamers)))
+        ApiClient.fetchIgnoredStreamers.flatMap(streamers => state.update(_.copy(ignoredStreamers = streamers))),
+        ApiClient.fetchTopGameIds.flatMap(ids => state.update(_.copy(topGameIds = ids)))
       ).parTupled.toResource
       _ <- startNotificationStream(state).background
       _ <- initPushNotifications(state).background
@@ -128,6 +129,8 @@ object Main extends IOWebApp:
   private def appView(state: SignallingRef[IO, Model]): Resource[IO, HtmlDivElement[IO]] =
     div(
       cls := "min-h-screen bg-twitch-dark flex flex-col items-center",
+      // Popular game warning popup overlay
+      SearchSection.popularGameWarning(state),
       // Header bar
       div(
         cls := "w-full bg-twitch-dark-card border-b border-gray-800 px-6 py-4 flex items-center justify-center",

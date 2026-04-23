@@ -84,7 +84,14 @@ class Database(xa: Transactor[IO], dialect: SqlDialect = SqlDialect.H2):
         PRIMARY KEY (user_id, streamer_id)
       )
     """.update.run
-    (createFollowed *> createTagFilters *> createIgnoredStreamers *> createSessions *> createUsers *> migrateUsersAddLogin *> migrateUsersAddDisplayName *> createPushSubscriptions *> createPushUniqueIndex).transact(xa).void
+    val createTopGames = sql"""
+      CREATE TABLE IF NOT EXISTS top_games (
+        category_id VARCHAR PRIMARY KEY,
+        name VARCHAR NOT NULL,
+        box_art_url VARCHAR NOT NULL
+      )
+    """.update.run
+    (createFollowed *> createTagFilters *> createIgnoredStreamers *> createSessions *> createUsers *> migrateUsersAddLogin *> migrateUsersAddDisplayName *> createPushSubscriptions *> createPushUniqueIndex *> createTopGames).transact(xa).void
 
   def getFollowed(userId: String): IO[List[TwitchCategory]] =
     sql"SELECT category_id, name, box_art_url FROM followed_categories WHERE user_id = $userId"
@@ -265,6 +272,21 @@ class Database(xa: Transactor[IO], dialect: SqlDialect = SqlDialect.H2):
   def deleteSession(sessionId: String): IO[Unit] =
     sql"DELETE FROM sessions WHERE session_id = $sessionId"
       .update.run.transact(xa).void
+
+  // ── Top games persistence ───────────────────────────────────────────
+
+  def replaceTopGames(games: List[TwitchCategory]): IO[Unit] =
+    val delete = sql"DELETE FROM top_games".update.run
+    val inserts = games.traverse_ { g =>
+      sql"INSERT INTO top_games (category_id, name, box_art_url) VALUES (${g.id}, ${g.name}, ${g.box_art_url})".update.run
+    }
+    (delete *> inserts).transact(xa).void
+
+  def getTopGameIds: IO[Set[String]] =
+    sql"SELECT category_id FROM top_games"
+      .query[String]
+      .to[Set]
+      .transact(xa)
 
 case class UserRow(
     userId: String,

@@ -12,7 +12,9 @@ case class AppSettings(
     sseReconnectDelay: FiniteDuration,
     emailFrom: String,
     emailFromName: String,
-    pushParallelSends: Int
+    pushParallelSends: Int,
+    topGamesCount: Int,
+    topGamesPollInterval: FiniteDuration
 )
 
 object AppSettings:
@@ -27,5 +29,7 @@ object AppSettings:
       sseReconnectDelay = config.getDuration("sse.reconnect-delay").toMillis.millis,
       emailFrom = config.getString("email.from"),
       emailFromName = config.getString("email.from-name"),
-      pushParallelSends = config.getInt("push.parallel-sends")
+      pushParallelSends = config.getInt("push.parallel-sends"),
+      topGamesCount = config.getInt("top-games.count"),
+      topGamesPollInterval = config.getDuration("top-games.poll-interval").toMillis.millis
     )
