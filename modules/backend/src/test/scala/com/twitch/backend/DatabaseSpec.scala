@@ -146,3 +146,51 @@ class DatabaseSpec extends CatsEffectSuite:
       found <- db.findUser("newuser4")
     yield assertEquals(found.get.email, Some("new@example.com"))
   }
+
+  // ── getUsersFollowingCategories tests ──────────────────────────────
+
+  private val catA = TwitchCategory("catA", "Category A", "https://example.com/a.jpg")
+  private val catB = TwitchCategory("catB", "Category B", "https://example.com/b.jpg")
+
+  test("getUsersFollowingCategories returns users following any of the given categories") {
+    for
+      _ <- db.follow("fanout1", catA)
+      _ <- db.follow("fanout2", catA)
+      _ <- db.follow("fanout3", catB)
+      result <- db.getUsersFollowingCategories(Set("catA", "catB"))
+    yield assertEquals(result, Set("fanout1", "fanout2", "fanout3"))
+  }
+
+  test("getUsersFollowingCategories excludes users not following any given category") {
+    for
+      _ <- db.follow("fanout4", catA)
+      _ <- db.follow("fanout5", catB)
+      result <- db.getUsersFollowingCategories(Set("catA"))
+    yield {
+      assert(result.contains("fanout4"))
+      assert(!result.contains("fanout5"))
+    }
+  }
+
+  test("getUsersFollowingCategories returns empty set for empty input") {
+    for
+      result <- db.getUsersFollowingCategories(Set.empty)
+    yield assert(result.isEmpty)
+  }
+
+  test("getUsersFollowingCategories returns empty set for unknown category") {
+    for
+      result <- db.getUsersFollowingCategories(Set("nonexistent_cat"))
+    yield assert(result.isEmpty)
+  }
+
+  test("getUsersFollowingCategories deduplicates users following multiple matched categories") {
+    for
+      _ <- db.follow("fanout6", catA)
+      _ <- db.follow("fanout6", catB)
+      result <- db.getUsersFollowingCategories(Set("catA", "catB"))
+    yield {
+      assert(result.contains("fanout6"))
+      assertEquals(result.count(_ == "fanout6"), 1)
+    }
+  }

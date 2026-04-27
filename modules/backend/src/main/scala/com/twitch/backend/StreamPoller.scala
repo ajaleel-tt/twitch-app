@@ -78,7 +78,7 @@ class StreamPoller(
           pushUserIds <- db.getUsersFollowingCategories(byCategoryId.keySet)
           (pushFollowed, pushFilters, pushIgnored) <- loadUserPreferences(pushUserIds)
           _ <- sendPushNotifications(ps, notifications, pushFollowed, pushFilters, pushIgnored)
-        yield ()).start.void
+        yield ()).handleErrorWith(e => IO.println(s"Push notification error: ${e.getMessage}")).start.void
       }
     yield ()
 

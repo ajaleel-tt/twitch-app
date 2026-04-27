@@ -91,7 +91,9 @@ class Database(xa: Transactor[IO], dialect: SqlDialect = SqlDialect.H2):
         box_art_url VARCHAR NOT NULL
       )
     """.update.run
-    (createFollowed *> createTagFilters *> createIgnoredStreamers *> createSessions *> createUsers *> migrateUsersAddLogin *> migrateUsersAddDisplayName *> createPushSubscriptions *> createPushUniqueIndex *> createTopGames).transact(xa).void
+    val createFollowedCategoryIndex =
+      sql"CREATE INDEX IF NOT EXISTS idx_followed_category_user ON followed_categories (category_id, user_id)".update.run
+    (createFollowed *> createTagFilters *> createIgnoredStreamers *> createSessions *> createUsers *> migrateUsersAddLogin *> migrateUsersAddDisplayName *> createPushSubscriptions *> createPushUniqueIndex *> createTopGames *> createFollowedCategoryIndex).transact(xa).void
 
   def getFollowed(userId: String): IO[List[TwitchCategory]] =
     sql"SELECT category_id, name, box_art_url FROM followed_categories WHERE user_id = $userId"
