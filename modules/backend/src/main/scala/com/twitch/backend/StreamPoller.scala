@@ -54,25 +54,31 @@ class StreamPoller(
       ignoredMap.getOrElse(userId, Set.empty)
     )
 
-  private def broadcastNotifications(notifications: List[StreamNotification]): IO[Unit] =
+  private def loadUserPreferences(userIds: Set[String]): IO[(Map[String, Set[String]], Map[String, List[com.twitch.core.TagFilter]], Map[String, Set[String]])] =
     for
+      followedByUser <- userIds.toList.traverse(uid => db.getFollowed(uid).map(cats => uid -> cats.map(_.id).toSet))
+      filtersByUser  <- userIds.toList.traverse(uid => db.getTagFilters(uid).map(filters => uid -> filters))
+      ignoredByUser  <- userIds.toList.traverse(uid => db.getIgnoredStreamers(uid).map(list => uid -> list.map(_.streamerId).toSet))
+    yield (followedByUser.toMap, filtersByUser.toMap, ignoredByUser.toMap)
+
+  private def broadcastNotifications(notifications: List[StreamNotification]): IO[Unit] =
+    val byCategoryId = notifications.groupBy(_.categoryId)
+    for
+      // SSE delivery: scoped to connected users
       queues <- notificationQueues.get
       sseUserIds = queues.values.map(_._1).toSet
-      followedByUser <- sseUserIds.toList.traverse(uid => db.getFollowed(uid).map(cats => uid -> cats.map(_.id).toSet))
-      followedMap = followedByUser.toMap
-      filtersByUser <- sseUserIds.toList.traverse(uid => db.getTagFilters(uid).map(filters => uid -> filters))
-      filtersMap = filtersByUser.toMap
-      ignoredByUser <- sseUserIds.toList.traverse(uid => db.getIgnoredStreamers(uid).map(list => uid -> list.map(_.streamerId).toSet))
-      ignoredMap = ignoredByUser.toMap
-      byCategoryId = notifications.groupBy(_.categoryId)
-      // SSE delivery
+      (sseFollowed, sseFilters, sseIgnored) <- loadUserPreferences(sseUserIds)
       _ <- queues.values.toList.traverse_ { case (userId, queue) =>
-        val filtered = filteredNotificationsForUser(userId, byCategoryId, followedMap, filtersMap, ignoredMap)
+        val filtered = filteredNotificationsForUser(userId, byCategoryId, sseFollowed, sseFilters, sseIgnored)
         filtered.traverse_(queue.offer)
       }
-      // Push notification delivery (fire-and-forget)
+      // Push delivery: database-driven, independent of SSE connections
       _ <- pushService.fold(IO.unit) { ps =>
-        sendPushNotifications(ps, notifications, followedMap, filtersMap, ignoredMap).start.void
+        (for
+          pushUserIds <- db.getUsersFollowingCategories(byCategoryId.keySet)
+          (pushFollowed, pushFilters, pushIgnored) <- loadUserPreferences(pushUserIds)
+          _ <- sendPushNotifications(ps, notifications, pushFollowed, pushFilters, pushIgnored)
+        yield ()).start.void
       }
     yield ()
 

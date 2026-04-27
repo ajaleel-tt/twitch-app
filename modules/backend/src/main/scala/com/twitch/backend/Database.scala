@@ -240,6 +240,15 @@ class Database(xa: Transactor[IO], dialect: SqlDialect = SqlDialect.H2):
         .to[List]
         .transact(xa)
 
+  def getUsersFollowingCategories(categoryIds: Set[String]): IO[Set[String]] =
+    if categoryIds.isEmpty then IO.pure(Set.empty)
+    else
+      val inClause = Fragments.in(fr"category_id", categoryIds.toList.toNel.get)
+      (fr"SELECT DISTINCT user_id FROM followed_categories WHERE" ++ inClause)
+        .query[String]
+        .to[Set]
+        .transact(xa)
+
   // ── Session persistence ─────────────────────────────────────────────
 
   def createSession(
