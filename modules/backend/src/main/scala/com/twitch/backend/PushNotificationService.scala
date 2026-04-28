@@ -2,6 +2,7 @@ package com.twitch.backend
 
 import cats.effect.*
 import cats.effect.implicits.*
+import cats.effect.std.Mutex
 import org.http4s.*
 import org.http4s.client.Client
 import org.http4s.implicits.*
@@ -20,26 +21,28 @@ class PushNotificationService(
     projectId: String,
     serviceAccountKey: ServiceAccountKey,
     parallelSends: Int,
-    db: Database
+    db: Database,
+    tokenCache: Ref[IO, Option[(String, Instant)]],
+    tokenMutex: Mutex[IO]
 ):
 
   private val fcmUri = Uri.unsafeFromString(
     s"https://fcm.googleapis.com/v1/projects/$projectId/messages:send"
   )
 
-  // Cached access token with expiry
-  private var cachedToken: Option[(String, Instant)] = None
-
   private def getAccessToken: IO[String] =
-    IO.realTimeInstant.flatMap { now =>
-      cachedToken match
-        case Some((token, expiry)) if now.isBefore(expiry.minusSeconds(60)) =>
-          IO.pure(token)
-        case _ =>
-          fetchAccessToken.flatMap { case (token, expiresIn) =>
-            val expiry = now.plusSeconds(expiresIn)
-            IO { cachedToken = Some((token, expiry)) } *> IO.pure(token)
-          }
+    tokenMutex.lock.surround {
+      IO.realTimeInstant.flatMap { now =>
+        tokenCache.get.flatMap {
+          case Some((token, expiry)) if now.isBefore(expiry.minusSeconds(60)) =>
+            IO.pure(token)
+          case _ =>
+            fetchAccessToken.flatMap { case (token, expiresIn) =>
+              val expiry = now.plusSeconds(expiresIn)
+              tokenCache.set(Some((token, expiry))).as(token)
+            }
+        }
+      }
     }
 
   private def fetchAccessToken: IO[(String, Long)] =

@@ -87,9 +87,11 @@ object TwitchServer extends IOApp.Simple:
                 case None => IO.none
             keyIO.flatMap {
               case Some(key) =>
-                IO.println("Push notifications enabled").as(
-                  Some(new PushNotificationService(client, key.projectId, key, settings.pushParallelSends, db))
-                )
+                for
+                  tokenCache <- IO.ref(Option.empty[(String, java.time.Instant)])
+                  tokenMutex <- cats.effect.std.Mutex[IO]
+                  _ <- IO.println("Push notifications enabled")
+                yield Some(new PushNotificationService(client, key.projectId, key, settings.pushParallelSends, db, tokenCache, tokenMutex))
               case None =>
                 IO.println("Push notifications disabled (set FCM_SERVICE_ACCOUNT_JSON or FCM_SERVICE_ACCOUNT_KEY)").as(None)
             }.handleErrorWith { err =>
