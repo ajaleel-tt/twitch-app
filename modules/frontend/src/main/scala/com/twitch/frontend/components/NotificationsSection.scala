@@ -17,8 +17,8 @@ object NotificationsSection:
         cls := "grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4",
         children <-- state.map { m =>
           val followedIds = m.followedCategories.map(_.id).toSet
-          val ignoredIds = m.ignoredStreamers.map(_.streamerId).toSet
-          val relevant = m.notifications.filter(n => followedIds.contains(n.categoryId) && !ignoredIds.contains(n.streamerId))
+          val ignoredIds = m.ignoredStreamers.streamers.map(_.streamerId).toSet
+          val relevant = m.notifications.notifications.filter(n => followedIds.contains(n.categoryId) && !ignoredIds.contains(n.streamerId))
           if relevant.isEmpty then
             List(div(
               cls := "col-span-full text-center py-8",
