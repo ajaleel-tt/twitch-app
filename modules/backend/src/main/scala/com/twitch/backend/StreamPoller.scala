@@ -20,7 +20,7 @@ class StreamPoller(
     appToken: Ref[IO, Option[String]],
     notifiedStreamIds: Ref[IO, Set[String]],
     settings: AppSettings,
-    pushService: Option[PushNotificationService]
+    pushService: Option[PushService]
 ) extends TwitchPoller(clientId, clientSecret, client, appToken):
 
   private def fetchStreamsPage(token: String, categoryId: String, cursor: Option[String]): IO[TwitchStreamsResponse] =
@@ -69,7 +69,7 @@ class StreamPoller(
     yield ()
 
   private def sendPushNotifications(
-      ps: PushNotificationService,
+      ps: PushService,
       notifications: List[StreamNotification],
       followedMap: Map[String, Set[String]],
       filtersMap: Map[String, List[com.twitch.core.TagFilter]],
@@ -134,7 +134,7 @@ object StreamPoller:
       db: Database,
       notificationQueues: Ref[IO, Map[String, (String, Queue[IO, StreamNotification])]],
       settings: AppSettings,
-      pushService: Option[PushNotificationService] = None
+      pushService: Option[PushService] = None
   ): IO[StreamPoller] =
     for
       tokenRef <- IO.ref(Option.empty[String])

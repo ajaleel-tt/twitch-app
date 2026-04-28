@@ -24,7 +24,7 @@ class PushNotificationService(
     db: Database,
     tokenCache: Ref[IO, Option[(String, Instant)]],
     tokenMutex: Mutex[IO]
-):
+) extends PushService:
 
   private val fcmUri = Uri.unsafeFromString(
     s"https://fcm.googleapis.com/v1/projects/$projectId/messages:send"

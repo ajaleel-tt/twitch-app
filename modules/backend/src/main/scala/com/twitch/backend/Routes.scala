@@ -2,15 +2,12 @@ package com.twitch.backend
 
 import cats.effect.*
 import org.http4s.*
-import org.http4s.Method.*
 import org.http4s.dsl.io.*
 import org.http4s.circe.CirceEntityDecoder.*
 import org.http4s.circe.CirceEntityEncoder.*
-import org.http4s.client.Client
 import org.http4s.implicits.*
-import org.http4s.headers.{Authorization, Location}
+import org.http4s.headers.Location
 import org.http4s.SameSite
-import org.typelevel.ci.*
 import java.util.UUID
 import java.time.Instant
 import cats.effect.std.Queue
@@ -27,14 +24,13 @@ case class SessionData(
 
 class Routes(
     clientId: String,
-    clientSecret: String,
     redirectUri: String,
-    client: Client[IO],
+    twitchApi: TwitchApi,
     pendingOAuthStates: Ref[IO, Set[String]],
     db: Database,
     notificationQueues: Ref[IO, Map[String, (String, Queue[IO, StreamNotification])]],
     settings: AppSettings,
-    emailService: Option[EmailService]
+    emailService: Option[EmailNotifier]
 ):
 
   private val secureCookies = redirectUri.startsWith("https")
@@ -66,27 +62,15 @@ class Routes(
     }
     if !needsRefresh || data.refreshToken.isEmpty then IO.pure(data)
     else
-      val req = Request[IO](method = Method.POST, uri = uri"https://id.twitch.tv/oauth2/token").withEntity(
-        UrlForm(
-          "client_id" -> clientId,
-          "client_secret" -> clientSecret,
-          "grant_type" -> "refresh_token",
-          "refresh_token" -> data.refreshToken.get
-        )
-      )
-      client.run(req).use { resp =>
-        if resp.status.isSuccess then
-          resp.as[TwitchTokenResponse].flatMap { tokenResp =>
-            val expiresAt = Some(Instant.now().plusSeconds(tokenResp.expires_in.toLong))
-            db.updateSessionToken(data.sessionId, tokenResp.access_token, tokenResp.refresh_token.orElse(data.refreshToken), expiresAt) *>
-              IO.pure(data.copy(
-                accessToken = tokenResp.access_token,
-                refreshToken = tokenResp.refresh_token.orElse(data.refreshToken),
-                tokenExpiresAt = expiresAt.map(_.getEpochSecond)
-              ))
-          }
-        else IO.pure(data) // if refresh fails, try with existing token
-      }
+      twitchApi.refreshToken(data.refreshToken.get).flatMap { tokenResp =>
+        val expiresAt = Some(Instant.now().plusSeconds(tokenResp.expires_in.toLong))
+        db.updateSessionToken(data.sessionId, tokenResp.access_token, tokenResp.refresh_token.orElse(data.refreshToken), expiresAt) *>
+          IO.pure(data.copy(
+            accessToken = tokenResp.access_token,
+            refreshToken = tokenResp.refresh_token.orElse(data.refreshToken),
+            tokenExpiresAt = expiresAt.map(_.getEpochSecond)
+          ))
+      }.handleErrorWith(_ => IO.pure(data)) // if refresh fails, try with existing token
 
   private object CodeQueryParamMatcher extends QueryParamDecoderMatcher[String]("code")
   private object StateQueryParamMatcher extends QueryParamDecoderMatcher[String]("state")
@@ -106,33 +90,9 @@ class Routes(
         _ <- IO.raiseUnless(pending.contains(state))(new RuntimeException("Invalid OAuth state parameter"))
         _ <- pendingOAuthStates.update(_ - state)
         _ <- IO.println("Received auth callback")
-        req = Request[IO](method = Method.POST, uri = uri"https://id.twitch.tv/oauth2/token").withEntity(
-          UrlForm(
-            "client_id" -> clientId,
-            "client_secret" -> clientSecret,
-            "code" -> code,
-            "grant_type" -> "authorization_code",
-            "redirect_uri" -> redirectUri
-          )
-        )
-        
-        tokenResponse <- client.run(req).use { resp =>
-          if (resp.status.isSuccess) {
-            resp.as[TwitchTokenResponse]
-          } else {
-            resp.bodyText.compile.string.flatMap { errorBody =>
-              IO.raiseError(new RuntimeException(s"unexpected HTTP status: ${resp.status} for request POST https://id.twitch.tv/oauth2/token. Response body: $errorBody"))
-            }
-          }
-        }
-        
+        tokenResponse <- twitchApi.exchangeCode(code, redirectUri)
         _ <- IO.println("Token exchange successful")
-        userReq = Request[IO](method = Method.GET, uri = uri"https://api.twitch.tv/helix/users").putHeaders(
-          Authorization(Credentials.Token(AuthScheme.Bearer, tokenResponse.access_token)),
-          Header.Raw(ci"Client-Id", clientId)
-        )
-        userResponse <- client.expect[TwitchUsersResponse](userReq)
-        user = userResponse.data.head
+        user <- twitchApi.getUser(tokenResponse.access_token)
         _ <- IO.println(s"Found user: ${user.display_name}")
         existingUser <- db.findUser(user.id)
         _ <- existingUser match
@@ -192,15 +152,7 @@ class Routes(
       getSession(req).flatMap {
         case Some(data) =>
           refreshTokenIfNeeded(data).flatMap { refreshed =>
-            val uri = uri"https://api.twitch.tv/helix/search/categories"
-              .withQueryParam("query", query)
-              .withQueryParam("first", settings.searchPageSize.toString)
-              .withOptionQueryParam("after", after)
-            val searchReq = Request[IO](method = Method.GET, uri = uri).putHeaders(
-              Authorization(Credentials.Token(AuthScheme.Bearer, refreshed.accessToken)),
-              Header.Raw(ci"Client-Id", clientId)
-            )
-            client.expect[TwitchSearchCategoriesResponse](searchReq).flatMap(Ok(_))
+            twitchApi.searchCategories(query, after, refreshed.accessToken, settings.searchPageSize).flatMap(Ok(_))
           }
         case None => Forbidden("Not logged in")
       }
@@ -208,15 +160,7 @@ class Routes(
       getSession(req).flatMap {
         case Some(data) =>
           refreshTokenIfNeeded(data).flatMap { refreshed =>
-            val uri = uri"https://api.twitch.tv/helix/search/channels"
-              .withQueryParam("query", query)
-              .withQueryParam("first", settings.searchPageSize.toString)
-              .withOptionQueryParam("after", after)
-            val searchReq = Request[IO](method = Method.GET, uri = uri).putHeaders(
-              Authorization(Credentials.Token(AuthScheme.Bearer, refreshed.accessToken)),
-              Header.Raw(ci"Client-Id", clientId)
-            )
-            client.expect[TwitchSearchChannelsResponse](searchReq).flatMap(Ok(_))
+            twitchApi.searchChannels(query, after, refreshed.accessToken, settings.searchPageSize).flatMap(Ok(_))
           }
         case None => Forbidden("Not logged in")
       }
