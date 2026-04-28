@@ -40,20 +40,6 @@ class StreamPoller(
       }(token)
     }.map(_.flatten)
 
-  private def filteredNotificationsForUser(
-      userId: String,
-      byCategoryId: Map[String, List[StreamNotification]],
-      followedMap: Map[String, Set[String]],
-      filtersMap: Map[String, List[com.twitch.core.TagFilter]],
-      ignoredMap: Map[String, Set[String]]
-  ): List[StreamNotification] =
-    val userCategoryIds = followedMap.getOrElse(userId, Set.empty)
-    val relevantNotifications = userCategoryIds.flatMap(id => byCategoryId.getOrElse(id, Nil)).toList
-    StreamLogic.applyIgnoredStreamers(
-      StreamLogic.applyTagFilters(relevantNotifications, filtersMap.getOrElse(userId, Nil)),
-      ignoredMap.getOrElse(userId, Set.empty)
-    )
-
   private def loadUserPreferences(userIds: Set[String]): IO[(Map[String, Set[String]], Map[String, List[com.twitch.core.TagFilter]], Map[String, Set[String]])] =
     for
       followedByUser <- userIds.toList.traverse(uid => db.getFollowed(uid).map(cats => uid -> cats.map(_.id).toSet))
@@ -69,7 +55,7 @@ class StreamPoller(
       sseUserIds = queues.values.map(_._1).toSet
       (sseFollowed, sseFilters, sseIgnored) <- loadUserPreferences(sseUserIds)
       _ <- queues.values.toList.traverse_ { case (userId, queue) =>
-        val filtered = filteredNotificationsForUser(userId, byCategoryId, sseFollowed, sseFilters, sseIgnored)
+        val filtered = StreamLogic.filteredNotificationsForUser(userId, byCategoryId, sseFollowed, sseFilters, sseIgnored)
         filtered.traverse_(queue.offer)
       }
       // Push delivery: database-driven, independent of SSE connections
@@ -96,7 +82,7 @@ class StreamPoller(
     db.getPushSubscriptionsForUsers(allFollowingUserIds).flatMap { subs =>
       val subsByUser = subs.groupBy(_.userId)
       subsByUser.toList.traverse_ { case (userId, userSubs) =>
-        val filtered = filteredNotificationsForUser(userId, byCategoryId, followedMap, filtersMap, ignoredMap)
+        val filtered = StreamLogic.filteredNotificationsForUser(userId, byCategoryId, followedMap, filtersMap, ignoredMap)
         if filtered.nonEmpty then ps.sendBatch(userSubs, filtered)
         else IO.unit
       }

@@ -61,3 +61,17 @@ object StreamLogic:
   ): List[StreamNotification] =
     if ignoredStreamerIds.isEmpty then notifications
     else notifications.filterNot(n => ignoredStreamerIds.contains(n.streamerId))
+
+  def filteredNotificationsForUser(
+      userId: String,
+      byCategoryId: Map[String, List[StreamNotification]],
+      followedMap: Map[String, Set[String]],
+      filtersMap: Map[String, List[TagFilter]],
+      ignoredMap: Map[String, Set[String]]
+  ): List[StreamNotification] =
+    val userCategoryIds = followedMap.getOrElse(userId, Set.empty)
+    val relevantNotifications = userCategoryIds.flatMap(id => byCategoryId.getOrElse(id, Nil)).toList
+    applyIgnoredStreamers(
+      applyTagFilters(relevantNotifications, filtersMap.getOrElse(userId, Nil)),
+      ignoredMap.getOrElse(userId, Set.empty)
+    )
