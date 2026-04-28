@@ -102,7 +102,8 @@ object TwitchServer extends IOApp.Simple:
 
           for
             pushService <- pushServiceIO
-            routes = new Routes(clientId, clientSecret, redirectUri, client, pendingOAuthStates, db, notificationQueues, settings, emailService)
+            twitchApi = new TwitchApiClient(clientId, clientSecret, client)
+            routes = new Routes(clientId, redirectUri, twitchApi, pendingOAuthStates, db, notificationQueues, settings, emailService)
             httpApp = Router(
               "/api" -> routes.apiRoutes,
               "/" -> routes.authRoutes,

@@ -13,7 +13,7 @@ class EmailService(
     apiKey: String,
     fromEmail: String,
     fromName: String
-):
+) extends EmailNotifier:
 
   def sendWelcomeEmail(toEmail: String, displayName: String): IO[Unit] =
     val body = Json.obj(

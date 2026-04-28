@@ -6,13 +6,10 @@ import cats.effect.std.Queue
 import cats.syntax.all.*
 import doobie.h2.H2Transactor
 import org.http4s.*
-import org.http4s.Method.*
-import org.http4s.dsl.io.*
 import org.http4s.implicits.*
 import org.http4s.headers.Location
 import org.http4s.circe.CirceEntityDecoder.*
 import org.http4s.circe.CirceEntityEncoder.*
-import org.http4s.client.Client
 import com.twitch.core.*
 import scala.concurrent.duration.*
 
@@ -36,24 +33,20 @@ class RoutesSpec extends CatsEffectSuite:
   )
   private val testCategory = TwitchCategory("cat1", "Test Game", "https://img.test/art.jpg")
 
-  // Stub client that handles token exchange and user lookup for auth callback tests,
-  // and category search for search endpoint tests.
-  private val stubClient: Client[IO] = Client.fromHttpApp[IO](
-    HttpRoutes.of[IO] {
-      case req @ POST -> Root / "oauth2" / "token" =>
-        val tokenResp = TwitchTokenResponse("test-access-token", 3600, None, None, "bearer")
-        Response[IO](Status.Ok).withEntity(tokenResp).pure[IO]
-      case GET -> Root / "helix" / "users" =>
-        val usersResp = TwitchUsersResponse(List(testUser))
-        Response[IO](Status.Ok).withEntity(usersResp).pure[IO]
-      case GET -> Root / "helix" / "search" / "categories" =>
-        val searchResp = TwitchSearchCategoriesResponse(
-          List(TwitchCategory("found1", "Found Game", "https://img.test/found.jpg")),
-          None
-        )
-        Response[IO](Status.Ok).withEntity(searchResp).pure[IO]
-    }.orNotFound
-  )
+  private val stubTwitchApi: TwitchApi = new TwitchApi:
+    def searchCategories(query: String, after: Option[String], accessToken: String, pageSize: Int): IO[TwitchSearchCategoriesResponse] =
+      IO.pure(TwitchSearchCategoriesResponse(
+        List(TwitchCategory("found1", "Found Game", "https://img.test/found.jpg")),
+        None
+      ))
+    def searchChannels(query: String, after: Option[String], accessToken: String, pageSize: Int): IO[TwitchSearchChannelsResponse] =
+      IO.pure(TwitchSearchChannelsResponse(Nil, None))
+    def getUser(accessToken: String): IO[TwitchUser] =
+      IO.pure(testUser)
+    def exchangeCode(code: String, redirectUri: String): IO[TwitchTokenResponse] =
+      IO.pure(TwitchTokenResponse("test-access-token", 3600, None, None, "bearer"))
+    def refreshToken(refreshToken: String): IO[TwitchTokenResponse] =
+      IO.pure(TwitchTokenResponse("refreshed-token", 3600, None, None, "bearer"))
 
   case class TestEnv(
       routes: Routes,
@@ -76,9 +69,8 @@ class RoutesSpec extends CatsEffectSuite:
       notifQueues <- Resource.eval(IO.ref(Map.empty[String, (String, Queue[IO, StreamNotification])]))
       routes = new Routes(
         clientId = "test-client-id",
-        clientSecret = "test-client-secret",
         redirectUri = "http://localhost:8080/auth/callback",
-        client = stubClient,
+        twitchApi = stubTwitchApi,
         pendingOAuthStates = pendingStates,
         db = db,
         notificationQueues = notifQueues,
