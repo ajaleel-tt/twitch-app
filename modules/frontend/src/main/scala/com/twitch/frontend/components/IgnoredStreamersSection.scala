@@ -5,7 +5,7 @@ import calico.html.io.{*, given}
 import cats.effect.*
 import fs2.concurrent.*
 import fs2.dom.*
-import com.twitch.frontend.{Model, ApiClient}
+import com.twitch.frontend.{Model, IgnoredStreamerState, ApiClient}
 import com.twitch.core.*
 
 object IgnoredStreamersSection:
@@ -20,7 +20,7 @@ object IgnoredStreamersSection:
         div(
           cls := "flex flex-wrap gap-2",
           children <-- state.map { m =>
-            m.ignoredStreamers.map { s =>
+            m.ignoredStreamers.streamers.map { s =>
               streamerPill(state, s)
             }
           }
@@ -28,7 +28,7 @@ object IgnoredStreamersSection:
         // Empty state
         div(
           cls <-- state.map { m =>
-            if m.ignoredStreamers.isEmpty then List("text-xs", "text-gray-500", "italic")
+            if m.ignoredStreamers.streamers.isEmpty then List("text-xs", "text-gray-500", "italic")
             else List("hidden")
           },
           "No ignored streamers yet. Search below or use the 🚫 button on notifications."
@@ -44,16 +44,16 @@ object IgnoredStreamersSection:
                 typ := "text",
                 placeholder := "Type a streamer name...",
                 cls := "bg-twitch-dark border border-gray-700 text-white placeholder-gray-500 rounded-lg px-3 py-1.5 text-sm w-64 focus:outline-none focus:ring-2 focus:ring-twitch-purple focus:border-transparent transition-all",
-                value <-- state.map(_.streamerSearchQuery),
+                value <-- state.map(_.ignoredStreamers.searchQuery),
                 onInput --> { _.foreach(_ =>
                   self.value.get.flatMap { v =>
-                    state.update(_.copy(streamerSearchQuery = v)) *>
+                    state.update(m => m.copy(ignoredStreamers = m.ignoredStreamers.copy(searchQuery = v))) *>
                       (if v.trim.length >= 2 then
                         ApiClient.searchChannels(v.trim).flatMap(results =>
-                          state.update(_.copy(streamerSearchResults = results))
+                          state.update(m => m.copy(ignoredStreamers = m.ignoredStreamers.copy(searchResults = results)))
                         ).start.void
                       else
-                        state.update(_.copy(streamerSearchResults = Nil)))
+                        state.update(m => m.copy(ignoredStreamers = m.ignoredStreamers.copy(searchResults = Nil))))
                   }
                 )}
               )
@@ -62,19 +62,19 @@ object IgnoredStreamersSection:
               cls := "bg-gray-700 hover:bg-gray-600 text-gray-400 text-sm px-3 py-1.5 rounded-lg transition-colors cursor-pointer",
               "Clear",
               onClick --> { _.foreach(_ =>
-                state.update(_.copy(streamerSearchQuery = "", streamerSearchResults = Nil))
+                state.update(m => m.copy(ignoredStreamers = m.ignoredStreamers.copy(searchQuery = "", searchResults = Nil)))
               )}
             )
           ),
           // Search results dropdown
           div(
             cls <-- state.map { m =>
-              if m.streamerSearchResults.isEmpty || m.streamerSearchQuery.trim.length < 2 then List("hidden")
+              if m.ignoredStreamers.searchResults.isEmpty || m.ignoredStreamers.searchQuery.trim.length < 2 then List("hidden")
               else List("absolute", "z-10", "mt-1", "w-full", "bg-twitch-dark", "border", "border-gray-700", "rounded-lg", "shadow-lg", "max-h-60", "overflow-y-auto")
             },
             children <-- state.map { m =>
-              val ignoredIds = m.ignoredStreamers.map(_.streamerId).toSet
-              m.streamerSearchResults.map { channel =>
+              val ignoredIds = m.ignoredStreamers.streamers.map(_.streamerId).toSet
+              m.ignoredStreamers.searchResults.map { channel =>
                 searchResultRow(state, channel, ignoredIds.contains(channel.id))
               }
             }
@@ -113,7 +113,7 @@ object IgnoredStreamersSection:
           onClick --> { _.foreach(_ =>
             (ApiClient.addIgnoredStreamer(channel.id, channel.broadcaster_login, channel.display_name) *>
               ApiClient.fetchIgnoredStreamers.flatMap(streamers =>
-                state.update(_.copy(ignoredStreamers = streamers, streamerSearchQuery = "", streamerSearchResults = Nil))
+                state.update(m => m.copy(ignoredStreamers = IgnoredStreamerState(streamers, "", Nil)))
               )).start.void
           )}
         )
@@ -132,7 +132,7 @@ object IgnoredStreamersSection:
         onClick --> { _.foreach(_ =>
           (ApiClient.removeIgnoredStreamer(streamer.streamerId) *>
             ApiClient.fetchIgnoredStreamers.flatMap(streamers =>
-              state.update(_.copy(ignoredStreamers = streamers))
+              state.update(m => m.copy(ignoredStreamers = m.ignoredStreamers.copy(streamers = streamers)))
             )).start.void
         )}
       )
@@ -146,7 +146,7 @@ object IgnoredStreamersSection:
       onClick --> { _.foreach(_ =>
         (ApiClient.addIgnoredStreamer(notification.streamerId, notification.streamerLogin, notification.streamerName) *>
           ApiClient.fetchIgnoredStreamers.flatMap(streamers =>
-            state.update(_.copy(ignoredStreamers = streamers))
+            state.update(m => m.copy(ignoredStreamers = m.ignoredStreamers.copy(streamers = streamers)))
           )).start.void
       )}
     )

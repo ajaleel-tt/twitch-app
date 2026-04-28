@@ -20,8 +20,8 @@ object Main extends IOWebApp:
         ApiClient.fetchUser.flatMap(u => state.update(_.copy(user = u))),
         ApiClient.fetchConfig.flatMap(c => state.update(s => s.copy(twitchClientId = c.map(_.twitchClientId)))),
         ApiClient.fetchFollowed.flatMap(cats => state.update(_.copy(followedCategories = cats))),
-        ApiClient.fetchTagFilters.flatMap(filters => state.update(_.copy(tagFilters = filters))),
-        ApiClient.fetchIgnoredStreamers.flatMap(streamers => state.update(_.copy(ignoredStreamers = streamers))),
+        ApiClient.fetchTagFilters.flatMap(filters => state.update(m => m.copy(tagFilters = m.tagFilters.copy(filters = filters)))),
+        ApiClient.fetchIgnoredStreamers.flatMap(streamers => state.update(m => m.copy(ignoredStreamers = m.ignoredStreamers.copy(streamers = streamers)))),
         ApiClient.fetchTopGameIds.flatMap(ids => state.update(_.copy(topGameIds = ids)))
       ).parTupled.toResource
       _ <- startNotificationStream(state).background
@@ -59,9 +59,9 @@ object Main extends IOWebApp:
         requestNotificationPermission *>
           ApiClient.streamNotifications { n =>
             state.get.flatMap { m =>
-              if m.notifications.exists(_.streamerId == n.streamerId) then IO.unit
+              if m.notifications.notifications.exists(_.streamerId == n.streamerId) then IO.unit
               else
-                state.update(m => m.copy(notifications = (n :: m.notifications).take(Defaults.NotificationHistoryLimit))) *>
+                state.update(m => m.copy(notifications = m.notifications.copy(notifications = (n :: m.notifications.notifications).take(Defaults.NotificationHistoryLimit)))) *>
                   fireBrowserNotification(n)
             }
           }

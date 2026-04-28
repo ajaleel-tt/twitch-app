@@ -16,9 +16,9 @@ object TagFiltersSection:
       div(
         cls := "bg-twitch-dark-card border border-gray-800 rounded-xl p-4 flex flex-col gap-4",
         filterRow(state, "include", "Only show streams tagged:", "e.g. English",
-          _.newIncludeTag, (m, v) => m.copy(newIncludeTag = v)),
+          _.tagFilters.newIncludeTag, (m, v) => m.copy(tagFilters = m.tagFilters.copy(newIncludeTag = v))),
         filterRow(state, "exclude", "Hide streams tagged:", "e.g. Speedrun",
-          _.newExcludeTag, (m, v) => m.copy(newExcludeTag = v))
+          _.tagFilters.newExcludeTag, (m, v) => m.copy(tagFilters = m.tagFilters.copy(newExcludeTag = v)))
       )
     )
 
@@ -39,7 +39,7 @@ object TagFiltersSection:
         else
           (ApiClient.addTagFilter(filterType, tag) *>
             ApiClient.fetchTagFilters.flatMap(filters =>
-              state.update(s => setInputValue(s.copy(tagFilters = filters), ""))
+              state.update(s => setInputValue(s.copy(tagFilters = s.tagFilters.copy(filters = filters)), ""))
             )).start.void
       }
 
@@ -50,7 +50,7 @@ object TagFiltersSection:
       div(
         cls := "flex flex-wrap gap-2",
         children <-- state.map { m =>
-          m.tagFilters.filter(_.filterType == filterType).map { f =>
+          m.tagFilters.filters.filter(_.filterType == filterType).map { f =>
             tagPill(state, f, pillColor)
           }
         }
@@ -94,7 +94,7 @@ object TagFiltersSection:
         onClick --> { _.foreach(_ =>
           (ApiClient.removeTagFilter(filter.filterType, filter.tag) *>
             ApiClient.fetchTagFilters.flatMap(filters =>
-              state.update(_.copy(tagFilters = filters))
+              state.update(m => m.copy(tagFilters = m.tagFilters.copy(filters = filters)))
             )).start.void
         )}
       )

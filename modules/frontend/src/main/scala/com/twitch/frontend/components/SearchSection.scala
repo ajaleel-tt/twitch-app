@@ -63,14 +63,13 @@ object SearchSection:
 
   private def doSearch(state: SignallingRef[IO, Model]): IO[Unit] =
     state.get.flatMap { m =>
-      if m.searchQuery.trim.isEmpty then IO.unit
+      if m.search.query.trim.isEmpty then IO.unit
       else
-        state.update(_.copy(status = Some("Searching..."), searchResults = Vector.empty, paginationCursor = None, currentPage = 0)) *>
-          ApiClient.searchCategories(m.searchQuery).flatMap {
+        state.update(m => m.copy(status = Some("Searching..."), search = m.search.copy(results = Vector.empty, paginationCursor = None, currentPage = 0))) *>
+          ApiClient.searchCategories(m.search.query).flatMap {
             case Some(res) =>
-              state.update(_.copy(
-                searchResults = res.data.toVector,
-                paginationCursor = res.pagination.flatMap(_.cursor),
+              state.update(m => m.copy(
+                search = m.search.copy(results = res.data.toVector, paginationCursor = res.pagination.flatMap(_.cursor)),
                 status = None
               ))
             case None =>
@@ -86,8 +85,8 @@ object SearchSection:
           typ := "text",
           placeholder := "Search for a category...",
           cls := "bg-twitch-dark-card border border-gray-700 text-white placeholder-gray-500 rounded-lg px-4 py-3 w-80 focus:outline-none focus:ring-2 focus:ring-twitch-purple focus:border-transparent transition-all",
-          value <-- state.map(_.searchQuery),
-          onInput --> { _.foreach(_ => self.value.get.flatMap(q => state.update(_.copy(searchQuery = q)))) },
+          value <-- state.map(_.search.query),
+          onInput --> { _.foreach(_ => self.value.get.flatMap(q => state.update(m => m.copy(search = m.search.copy(query = q))))) },
           onKeyPress --> { _.foreach(e => IO.whenA(e.key == "Enter")(doSearch(state))) }
         )
       },
@@ -102,7 +101,8 @@ object SearchSection:
     div(
       cls := "grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4 mt-4",
       children <-- state.map { m =>
-        val paginatedResults = m.searchResults.slice(m.currentPage * m.pageSize, (m.currentPage + 1) * m.pageSize)
+        val s = m.search
+        val paginatedResults = s.results.slice(s.currentPage * s.pageSize, (s.currentPage + 1) * s.pageSize)
         paginatedResults.map(cat => categoryCard(state, cat)).toList
       }
     )
@@ -110,7 +110,7 @@ object SearchSection:
   def paginationView(state: SignallingRef[IO, Model]): Resource[IO, HtmlDivElement[IO]] =
     div(
       cls <-- state.map { m =>
-        if m.searchResults.nonEmpty then List("flex", "flex-col", "items-center", "mt-6", "gap-4")
+        if m.search.results.nonEmpty then List("flex", "flex-col", "items-center", "mt-6", "gap-4")
         else List("hidden")
       },
       div(
@@ -118,42 +118,43 @@ object SearchSection:
         button(
           cls := "bg-twitch-dark-card border border-gray-700 text-white px-4 py-2 rounded-lg hover:bg-twitch-dark-hover disabled:opacity-40 disabled:cursor-not-allowed transition-colors cursor-pointer",
           "Previous",
-          disabled <-- state.map(_.currentPage == 0),
-          onClick --> { _.foreach(_ => state.update(s => s.copy(currentPage = s.currentPage - 1))) }
+          disabled <-- state.map(_.search.currentPage == 0),
+          onClick --> { _.foreach(_ => state.update(m => m.copy(search = m.search.copy(currentPage = m.search.currentPage - 1)))) }
         ),
         span(
           cls := "text-gray-400 text-sm",
           state.map { m =>
-            val totalLocalPages = Math.max(1, (m.searchResults.size + m.pageSize - 1) / m.pageSize)
-            s"Page ${m.currentPage + 1} of $totalLocalPages"
+            val s = m.search
+            val totalLocalPages = Math.max(1, (s.results.size + s.pageSize - 1) / s.pageSize)
+            s"Page ${s.currentPage + 1} of $totalLocalPages"
           }
         ),
         button(
           cls := "bg-twitch-dark-card border border-gray-700 text-white px-4 py-2 rounded-lg hover:bg-twitch-dark-hover disabled:opacity-40 disabled:cursor-not-allowed transition-colors cursor-pointer",
           "Next",
           disabled <-- state.map { m =>
-            val totalLocalPages = (m.searchResults.size + m.pageSize - 1) / m.pageSize
-            m.currentPage >= totalLocalPages - 1
+            val s = m.search
+            val totalLocalPages = (s.results.size + s.pageSize - 1) / s.pageSize
+            s.currentPage >= totalLocalPages - 1
           },
-          onClick --> { _.foreach(_ => state.update(s => s.copy(currentPage = s.currentPage + 1))) }
+          onClick --> { _.foreach(_ => state.update(m => m.copy(search = m.search.copy(currentPage = m.search.currentPage + 1)))) }
         )
       ),
       button(
         cls <-- state.map { m =>
-          if m.paginationCursor.isDefined then List("bg-twitch-purple", "hover:bg-twitch-purple-dark", "text-white", "font-medium", "px-6", "py-2", "rounded-full", "transition-colors", "cursor-pointer")
+          if m.search.paginationCursor.isDefined then List("bg-twitch-purple", "hover:bg-twitch-purple-dark", "text-white", "font-medium", "px-6", "py-2", "rounded-full", "transition-colors", "cursor-pointer")
           else List("hidden")
         },
         "Load More results from Twitch",
         onClick --> { _.foreach { _ =>
-          state.get.flatMap { s =>
-            if s.paginationCursor.isEmpty then IO.unit
+          state.get.flatMap { m =>
+            if m.search.paginationCursor.isEmpty then IO.unit
             else
               state.update(_.copy(status = Some("Fetching more..."))) *>
-                ApiClient.searchCategories(s.searchQuery, s.paginationCursor).flatMap {
+                ApiClient.searchCategories(m.search.query, m.search.paginationCursor).flatMap {
                   case Some(res) =>
-                    state.update(st => st.copy(
-                      searchResults = st.searchResults ++ res.data,
-                      paginationCursor = res.pagination.flatMap(_.cursor),
+                    state.update(m => m.copy(
+                      search = m.search.copy(results = m.search.results ++ res.data, paginationCursor = res.pagination.flatMap(_.cursor)),
                       status = None
                     ))
                   case None =>
@@ -170,7 +171,7 @@ object SearchSection:
       .replaceAll("""-(\d+)x(\d+)\.""", "-280x370.")
     div(
       cls <-- state.map { m =>
-        val isSelected = m.selectedCategoryIds.contains(cat.id)
+        val isSelected = m.search.selectedCategoryIds.contains(cat.id)
         val base = List("bg-twitch-dark-card", "rounded-xl", "overflow-hidden", "border", "transition-all", "duration-200", "flex", "flex-col", "items-center")
         if isSelected then base ++ List("border-twitch-purple", "ring-2", "ring-twitch-purple", "shadow-lg", "shadow-twitch-purple/20")
         else base ++ List("border-gray-800", "hover:border-twitch-purple", "hover:shadow-lg", "hover:shadow-twitch-purple/10")
@@ -178,8 +179,8 @@ object SearchSection:
       div(
         cls := "cursor-pointer flex flex-col items-center w-full",
         onClick --> { _.foreach(_ => state.update(m =>
-          val newSel = if m.selectedCategoryIds.contains(cat.id) then m.selectedCategoryIds - cat.id else m.selectedCategoryIds + cat.id
-          m.copy(selectedCategoryIds = newSel)
+          val newSel = if m.search.selectedCategoryIds.contains(cat.id) then m.search.selectedCategoryIds - cat.id else m.search.selectedCategoryIds + cat.id
+          m.copy(search = m.search.copy(selectedCategoryIds = newSel))
         )) },
         img(src := boxArtUrl, cls := "w-full h-48 object-cover"),
         p(cls := "text-sm font-semibold text-white p-3 text-center truncate w-full", cat.name)
