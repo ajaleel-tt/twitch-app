@@ -373,32 +373,160 @@ case class TwitchUser(
 
 ## 10. Cats-Effect Patterns
 
-### Resource Management
-Always use `Resource` for values that need cleanup:
+This project follows the [Five Simple Rules](https://github.com/typelevel/cats-effect?tab=readme-ov-file#five-simple-rules) from the cats-effect documentation. Adhering to these rules unlocks performance, resource safety, reliable interruption, and full access to the cats-effect ecosystem.
+
+### Rule 1: Wrap All Side-Effects
+
+Every side-effecting operation must be wrapped in `IO.delay`, `IO.blocking`, `IO.interruptible`, or `IO.async`. Prefer many small `delay` blocks composed together over one large one.
+
 ```scala
+// GOOD - side effect wrapped
+IO.delay(System.currentTimeMillis())
+
+// GOOD - blocking I/O marked as such
+IO.blocking(scala.io.Source.fromFile("data.csv").mkString)
+
+// BAD - bare side effect inside a map/flatMap
+ref.get.map { state =>
+  println(s"Current state: $state")  // side effect not wrapped!
+  state
+}
+
+// GOOD
+ref.get.flatMap { state =>
+  IO.println(s"Current state: $state").as(state)
+}
+```
+
+### Rule 2: Use `Resource` or `bracket` for Cleanup
+
+Anything that acquires a resource requiring cleanup must use `Resource` or `bracket`. Never rely on try/finally or manual cleanup.
+
+```scala
+// GOOD
 for
   client <- EmberClientBuilder.default[IO].build
   xa <- HikariTransactor.fromHikariConfig[IO](config)
 yield (client, xa)
+
+// BAD - manual cleanup, easy to leak on error
+val client = buildClient()
+try { useClient(client) }
+finally { client.close() }
 ```
 
-### State
+### Rule 3: Never Hard-Block a Thread
+
+Threads must only be blocked inside `IO.blocking` or `IO.interruptible`. Never call `Thread.sleep`, `.get` on a `Future`, or any other blocking operation on the compute pool.
+
+```scala
+// GOOD - uses IO.sleep on the IO scheduler
+IO.sleep(settings.pollerInterval) *> pollOnce
+
+// BAD - blocks a compute thread
+IO.delay(Thread.sleep(5000))
+
+// GOOD - blocking JDBC wrapped properly
+IO.blocking(connection.prepareStatement(sql).execute())
+```
+
+Note: doobie already handles this for database operations via its `Transactor`, so direct JDBC wrapping is rarely needed in this project.
+
+### Rule 4: Use `IOApp`
+
+The application entry point must extend `IOApp` or `IOApp.Simple`. Never write a `def main` that calls `unsafeRunSync` or similar.
+
+```scala
+// GOOD
+object TwitchServer extends IOApp.Simple:
+  def run: IO[Unit] = ...
+
+// BAD
+object TwitchServer:
+  def main(args: Array[String]): Unit =
+    program.unsafeRunSync()
+```
+
+### Rule 5: Never Call `unsafe` Methods
+
+Never call `unsafeRunSync`, `unsafeRunAndForget`, `unsafeToFuture`, or any method with "unsafe" in its name. These break the guarantees that the runtime provides. If you find yourself reaching for an unsafe method, restructure the code so the `IO` is composed into the main `run` method instead.
+
+### Additional Patterns
+
+**State:**
 - `Ref` for mutable state, never `var`.
 - `SignallingRef` for state that needs to be observed.
 
-### Concurrency
+**Concurrency:**
 - `.parTraverseN(n)` for bounded parallelism.
 - `.parTupled` for independent parallel effects.
 - `.start` + `.join` only when you need the fiber handle.
 
-### Error Handling
+**Error Handling:**
 - `IO.raiseError` instead of throwing exceptions.
 - `.handleErrorWith` for recovery.
 - `.attempt` when you need to inspect the error.
 
 ---
 
-## 11. Comments
+## 11. Cats Guidelines
+
+This project follows the [Typelevel Cats guidelines](https://typelevel.org/cats/guidelines.html). While many of those guidelines target library authors, several apply directly to application code.
+
+### Partially-Applied Type Pattern
+
+When writing generic functions with multiple type parameters where only some can be inferred, use the partially-applied type pattern. Split the call into two steps so the caller provides the non-inferable types and the compiler infers the rest.
+
+```scala
+// GOOD - F is provided, A is inferred from the argument
+OptionT.pure[IO](42)
+
+// BAD - forces the caller to specify everything
+OptionT.pure[IO, Int](42)
+```
+
+### Implicit Instance Priority
+
+When defining multiple related implicit (or `given`) instances in an inheritance hierarchy, place more specific instances at higher priority. Separate them into numbered abstract classes or traits (0 = highest priority), each inheriting from the next lower priority.
+
+```scala
+// Higher priority (more specific)
+trait MyInstances0 extends MyInstances1:
+  given specificInstance: MyTypeclass[SpecificType] = ...
+
+// Lower priority (more general)
+trait MyInstances1:
+  given generalInstance[A]: MyTypeclass[A] = ...
+```
+
+### Prefer Typeclass Syntax
+
+Use the typeclass syntax extensions (`cats.syntax.all.*`) rather than calling typeclass methods directly. This keeps code concise and idiomatic.
+
+```scala
+// GOOD - syntax extension
+list.traverse(fetchItem)
+(resultA, resultB).parTupled
+
+// LESS IDIOMATIC - direct typeclass call
+Traverse[List].traverse(list)(fetchItem)
+```
+
+### Prefer `Nested` Over Transformer `Applicative`
+
+When you only need `Applicative` (not `Monad`) for a composed effect, use `Nested` rather than a monad transformer. This avoids subtle behavioral differences between `Applicative` and `Monad` composition.
+
+```scala
+// GOOD - Nested for applicative composition
+import cats.data.Nested
+Nested(IO(Option(42))).map(_ + 1).value
+
+// CAUTION - EitherT with only Applicative can behave unexpectedly
+```
+
+---
+
+## 12. Comments
 
 - **Default to no comments.** Only add one when the WHY is non-obvious.
 - ScalaDoc (`/** ... */`) for public API.
@@ -407,7 +535,7 @@ yield (client, xa)
 
 ---
 
-## 12. Testing
+## 13. Testing
 
 - Framework: munit with munit-cats-effect.
 - Test class naming: `*Spec` (e.g., `StreamLogicSpec`, `DatabaseSpec`).
@@ -415,7 +543,7 @@ yield (client, xa)
 
 ---
 
-## 13. Scalafmt Configuration
+## 14. Scalafmt Configuration
 
 We recommend creating a `.scalafmt.conf` to mechanically enforce what it can:
 
