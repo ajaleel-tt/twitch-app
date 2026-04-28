@@ -8,14 +8,20 @@ import org.http4s.circe.CirceEntityEncoder.*
 import cats.effect.std.Queue
 import io.circe.syntax.*
 import com.twitch.core.*
-import com.twitch.backend.{Database, TwitchApi, Validation, AppSettings}
+import com.twitch.backend.{TwitchApi, Validation, AppSettings}
 import com.twitch.backend.auth.SessionManager
+import com.twitch.backend.db.*
 
 class ApiRoutes(
     clientId: String,
     sessionManager: SessionManager,
     twitchApi: TwitchApi,
-    db: Database,
+    followRepo: FollowRepository,
+    tagFilterRepo: TagFilterRepository,
+    ignoredStreamerRepo: IgnoredStreamerRepository,
+    sessionRepo: SessionRepository,
+    pushRepo: PushSubscriptionRepository,
+    topGamesRepo: TopGamesRepository,
     notificationQueues: Ref[IO, Map[String, (String, Queue[IO, StreamNotification])]],
     settings: AppSettings
 ):
@@ -34,21 +40,21 @@ class ApiRoutes(
     case req @ GET -> Root / "followed" =>
       sessionManager.getSession(req).flatMap {
         case Some(data) =>
-          db.getFollowed(data.user.id).flatMap(cats => Ok(FollowedCategoriesResponse(cats)))
+          followRepo.getFollowed(data.user.id).flatMap(cats => Ok(FollowedCategoriesResponse(cats)))
         case None => Forbidden("Not logged in")
       }
     case req @ POST -> Root / "follow" =>
       req.as[FollowRequest].flatMap { followReq =>
         sessionManager.getSession(req).flatMap {
           case Some(data) =>
-            db.follow(data.user.id, followReq.category) *> Ok("Followed")
+            followRepo.follow(data.user.id, followReq.category) *> Ok("Followed")
           case None => Forbidden("Not logged in")
         }
       }
     case req @ POST -> Root / "unfollow" / categoryId =>
       sessionManager.getSession(req).flatMap {
         case Some(data) =>
-          db.unfollow(data.user.id, categoryId) *> Ok("Unfollowed")
+          followRepo.unfollow(data.user.id, categoryId) *> Ok("Unfollowed")
         case None => Forbidden("Not logged in")
       }
     case req @ GET -> Root / "search" / "categories" :? SearchQueryParamMatcher(query) +& AfterQueryParamMatcher(after) =>
@@ -70,13 +76,13 @@ class ApiRoutes(
     case req @ POST -> Root / "logout" =>
       val sessionId = req.cookies.find(_.name == "session_id").map(_.content)
       for {
-        _ <- sessionId.fold(IO.unit)(id => db.deleteSession(id))
+        _ <- sessionId.fold(IO.unit)(id => sessionRepo.deleteSession(id))
         res <- Ok("Logged out").map(_.removeCookie("session_id"))
       } yield res
     case req @ GET -> Root / "tag-filters" =>
       sessionManager.getSession(req).flatMap {
         case Some(data) =>
-          db.getTagFilters(data.user.id).flatMap(filters => Ok(TagFiltersResponse(filters)))
+          tagFilterRepo.getTagFilters(data.user.id).flatMap(filters => Ok(TagFiltersResponse(filters)))
         case None => Forbidden("Not logged in")
       }
     case req @ POST -> Root / "tag-filters" / "add" =>
@@ -84,7 +90,7 @@ class ApiRoutes(
         sessionManager.getSession(req).flatMap {
           case Some(data) =>
             (Validation.validateTag(body.tag), Validation.validateFilterType(body.filterType)) match
-              case (Right(tag), Right(ft)) => db.addTagFilter(data.user.id, ft, tag) *> Ok("Filter added")
+              case (Right(tag), Right(ft)) => tagFilterRepo.addTagFilter(data.user.id, ft, tag) *> Ok("Filter added")
               case (Left(err), _) => BadRequest(err)
               case (_, Left(err)) => BadRequest(err)
           case None => Forbidden("Not logged in")
@@ -94,14 +100,14 @@ class ApiRoutes(
       req.as[AddTagFilterRequest].flatMap { body =>
         sessionManager.getSession(req).flatMap {
           case Some(data) =>
-            db.removeTagFilter(data.user.id, body.filterType, body.tag) *> Ok("Filter removed")
+            tagFilterRepo.removeTagFilter(data.user.id, body.filterType, body.tag) *> Ok("Filter removed")
           case None => Forbidden("Not logged in")
         }
       }
     case req @ GET -> Root / "ignored-streamers" =>
       sessionManager.getSession(req).flatMap {
         case Some(data) =>
-          db.getIgnoredStreamers(data.user.id).flatMap(streamers => Ok(IgnoredStreamersResponse(streamers)))
+          ignoredStreamerRepo.getIgnoredStreamers(data.user.id).flatMap(streamers => Ok(IgnoredStreamersResponse(streamers)))
         case None => Forbidden("Not logged in")
       }
     case req @ POST -> Root / "ignored-streamers" / "add" =>
@@ -109,7 +115,7 @@ class ApiRoutes(
         sessionManager.getSession(req).flatMap {
           case Some(data) =>
             Validation.validateNonEmpty(body.streamerId, "streamerId") match
-              case Right(_) => db.addIgnoredStreamer(data.user.id, body.streamerId, body.streamerLogin, body.streamerName) *> Ok("Streamer ignored")
+              case Right(_) => ignoredStreamerRepo.addIgnoredStreamer(data.user.id, body.streamerId, body.streamerLogin, body.streamerName) *> Ok("Streamer ignored")
               case Left(err) => BadRequest(err)
           case None => Forbidden("Not logged in")
         }
@@ -118,7 +124,7 @@ class ApiRoutes(
       req.as[RemoveIgnoredStreamerRequest].flatMap { body =>
         sessionManager.getSession(req).flatMap {
           case Some(data) =>
-            db.removeIgnoredStreamer(data.user.id, body.streamerId) *> Ok("Streamer unignored")
+            ignoredStreamerRepo.removeIgnoredStreamer(data.user.id, body.streamerId) *> Ok("Streamer unignored")
           case None => Forbidden("Not logged in")
         }
       }
@@ -127,7 +133,7 @@ class ApiRoutes(
         sessionManager.getSession(req).flatMap {
           case Some(data) =>
             Validation.validatePlatform(body.platform) match
-              case Right(platform) => db.savePushSubscription(data.user.id, body.token, platform) *> Ok("Registered")
+              case Right(platform) => pushRepo.savePushSubscription(data.user.id, body.token, platform) *> Ok("Registered")
               case Left(err) => BadRequest(err)
           case None => Forbidden("Not logged in")
         }
@@ -136,13 +142,13 @@ class ApiRoutes(
       req.as[PushUnregisterRequest].flatMap { body =>
         sessionManager.getSession(req).flatMap {
           case Some(_) =>
-            db.deletePushSubscription(body.token) *> Ok("Unregistered")
+            pushRepo.deletePushSubscription(body.token) *> Ok("Unregistered")
           case None => Forbidden("Not logged in")
         }
       }
     case req @ GET -> Root / "top-game-ids" =>
       sessionManager.getSession(req).flatMap {
-        case Some(_) => db.getTopGameIds.flatMap(ids => Ok(TopGameIdsResponse(ids)))
+        case Some(_) => topGamesRepo.getTopGameIds.flatMap(ids => Ok(TopGameIdsResponse(ids)))
         case None    => Forbidden("Not logged in")
       }
     case req @ GET -> Root / "notifications" / "stream" =>

@@ -2,6 +2,7 @@ package com.twitch.backend
 
 import cats.effect.IO
 import com.twitch.core.*
+import com.twitch.backend.db.PushSubscriptionRow
 
 trait PushService:
   def sendBatch(subscriptions: List[PushSubscriptionRow], notifications: List[StreamNotification]): IO[Unit]
