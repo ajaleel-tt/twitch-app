@@ -255,3 +255,61 @@ class StreamLogicSpec extends FunSuite:
     val result = StreamLogic.applyIgnoredStreamers(Nil, Set("u1"))
     assertEquals(result, Nil)
   }
+
+  // ── filteredNotificationsForUser ──────────────────────────────────
+
+  private val game1Notif = mkNotification(categoryId = "game1", tags = List("English"))
+  private val game2Notif = mkNotification(categoryId = "game2", tags = List("Spanish"))
+  private val game3Notif = mkNotification(categoryId = "game3", tags = List("English", "Speedrun"))
+
+  private val byCategoryId = Map(
+    "game1" -> List(game1Notif),
+    "game2" -> List(game2Notif),
+    "game3" -> List(game3Notif)
+  )
+
+  test("filteredNotificationsForUser: returns notifications only for followed categories") {
+    val followedMap = Map("alice" -> Set("game1", "game3"))
+    val result = StreamLogic.filteredNotificationsForUser("alice", byCategoryId, followedMap, Map.empty, Map.empty)
+    assertEquals(result.map(_.categoryId).toSet, Set("game1", "game3"))
+  }
+
+  test("filteredNotificationsForUser: returns empty when user follows no categories") {
+    val followedMap = Map("alice" -> Set.empty[String])
+    val result = StreamLogic.filteredNotificationsForUser("alice", byCategoryId, followedMap, Map.empty, Map.empty)
+    assertEquals(result, Nil)
+  }
+
+  test("filteredNotificationsForUser: returns empty when user is not in followedMap") {
+    val result = StreamLogic.filteredNotificationsForUser("unknown", byCategoryId, Map.empty, Map.empty, Map.empty)
+    assertEquals(result, Nil)
+  }
+
+  test("filteredNotificationsForUser: applies tag filters") {
+    val followedMap = Map("alice" -> Set("game1", "game2", "game3"))
+    val filtersMap = Map("alice" -> List(TagFilter("include", "english")))
+    val result = StreamLogic.filteredNotificationsForUser("alice", byCategoryId, followedMap, filtersMap, Map.empty)
+    assertEquals(result.map(_.categoryId).toSet, Set("game1", "game3"))
+  }
+
+  test("filteredNotificationsForUser: applies ignored streamers") {
+    val n1 = StreamNotification("game1", "G1", "u1", "login1", "Name1", "Title", 100, "thumb.jpg")
+    val n2 = StreamNotification("game1", "G1", "u2", "login2", "Name2", "Title", 200, "thumb.jpg")
+    val byCategory = Map("game1" -> List(n1, n2))
+    val followedMap = Map("alice" -> Set("game1"))
+    val ignoredMap = Map("alice" -> Set("u1"))
+    val result = StreamLogic.filteredNotificationsForUser("alice", byCategory, followedMap, Map.empty, ignoredMap)
+    assertEquals(result.map(_.streamerId), List("u2"))
+  }
+
+  test("filteredNotificationsForUser: applies category filter, tag filter, and ignored streamer together") {
+    val n1 = StreamNotification("game1", "G1", "u1", "l1", "N1", "T", 100, "t.jpg", List("English"))
+    val n2 = StreamNotification("game1", "G1", "u2", "l2", "N2", "T", 200, "t.jpg", List("English"))
+    val n3 = StreamNotification("game2", "G2", "u3", "l3", "N3", "T", 300, "t.jpg", List("Spanish"))
+    val byCategory = Map("game1" -> List(n1, n2), "game2" -> List(n3))
+    val followedMap = Map("alice" -> Set("game1", "game2"))
+    val filtersMap = Map("alice" -> List(TagFilter("include", "english")))
+    val ignoredMap = Map("alice" -> Set("u1"))
+    val result = StreamLogic.filteredNotificationsForUser("alice", byCategory, followedMap, filtersMap, ignoredMap)
+    assertEquals(result.map(_.streamerId), List("u2"))
+  }
