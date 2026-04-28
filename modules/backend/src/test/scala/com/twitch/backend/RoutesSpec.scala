@@ -51,7 +51,8 @@ class RoutesSpec extends CatsEffectSuite:
   case class TestEnv(
       authRoutes: routes.AuthRoutes,
       apiRoutes: routes.ApiRoutes,
-      db: Database,
+      sessionRepo: db.SessionRepository,
+      topGamesRepo: db.TopGamesRepository,
       pendingOAuthStates: Ref[IO, Set[String]],
       notificationQueues: Ref[IO, Map[String, (String, Queue[IO, StreamNotification])]]
   )
@@ -64,28 +65,40 @@ class RoutesSpec extends CatsEffectSuite:
         "jdbc:h2:mem:routes_test;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE",
         "sa", "", ec
       )
-      db = new Database(xa)
-      _ <- Resource.eval(db.initDb)
+      _ <- Resource.eval(db.Schema.initDb(xa, SqlDialect.H2))
+      followRepo = new db.FollowRepository(xa, SqlDialect.H2)
+      tagFilterRepo = new db.TagFilterRepository(xa, SqlDialect.H2)
+      ignoredStreamerRepo = new db.IgnoredStreamerRepository(xa, SqlDialect.H2)
+      userRepo = new db.UserRepository(xa)
+      sessionRepo = new db.SessionRepository(xa)
+      pushRepo = new db.PushSubscriptionRepository(xa, SqlDialect.H2)
+      topGamesRepo = new db.TopGamesRepository(xa)
       pendingStates <- Resource.eval(IO.ref(Set.empty[String]))
       notifQueues <- Resource.eval(IO.ref(Map.empty[String, (String, Queue[IO, StreamNotification])]))
-      sessionManager = new auth.SessionManager(db, stubTwitchApi)
+      sessionManager = new auth.SessionManager(sessionRepo, stubTwitchApi)
       authRoutes = new routes.AuthRoutes(
         clientId = "test-client-id",
         redirectUri = "http://localhost:8080/auth/callback",
         twitchApi = stubTwitchApi,
         pendingOAuthStates = pendingStates,
-        db = db,
+        userRepo = userRepo,
+        sessionRepo = sessionRepo,
         emailService = None
       )
       apiRoutes = new routes.ApiRoutes(
         clientId = "test-client-id",
         sessionManager = sessionManager,
         twitchApi = stubTwitchApi,
-        db = db,
+        followRepo = followRepo,
+        tagFilterRepo = tagFilterRepo,
+        ignoredStreamerRepo = ignoredStreamerRepo,
+        sessionRepo = sessionRepo,
+        pushRepo = pushRepo,
+        topGamesRepo = topGamesRepo,
         notificationQueues = notifQueues,
         settings = testSettings
       )
-    yield TestEnv(authRoutes, apiRoutes, db, pendingStates, notifQueues)
+    yield TestEnv(authRoutes, apiRoutes, sessionRepo, topGamesRepo, pendingStates, notifQueues)
   )
 
   override def munitFixtures = List(envFixture)
@@ -98,7 +111,7 @@ class RoutesSpec extends CatsEffectSuite:
   // Helper: create a session and return the cookie value
   private def createSession: IO[String] =
     val sessionId = java.util.UUID.randomUUID().toString
-    env.db.createSession(sessionId, testUser, "test-token", None, None) *>
+    env.sessionRepo.createSession(sessionId, testUser, "test-token", None, None) *>
       IO.pure(sessionId)
 
   // Helper: build request with session cookie
@@ -210,7 +223,7 @@ class RoutesSpec extends CatsEffectSuite:
       state = pendingStates.head
       callbackResp <- authApp.run(Request[IO](Method.GET, Uri.unsafeFromString(s"/auth/callback?code=test-code&state=$state")))
       setCookie = callbackResp.cookies.find(_.name == "session_id")
-      sessionRow <- setCookie.traverse(c => env.db.getSession(c.content))
+      sessionRow <- setCookie.traverse(c => env.sessionRepo.getSession(c.content))
     yield {
       assertEquals(callbackResp.status, Status.Found)
       assert(setCookie.isDefined, "Expected session_id cookie")
@@ -331,10 +344,10 @@ class RoutesSpec extends CatsEffectSuite:
     for
       sid <- IO(java.util.UUID.randomUUID().toString)
       expiredAt = java.time.Instant.now().minusSeconds(600)
-      _ <- env.db.createSession(sid, testUser, "old-token", Some("refresh-tok"), Some(expiredAt))
+      _ <- env.sessionRepo.createSession(sid, testUser, "old-token", Some("refresh-tok"), Some(expiredAt))
       resp <- apiApp.run(withSession(Request[IO](Method.GET, uri"/search/categories?query=test"), sid))
       body <- resp.as[TwitchSearchCategoriesResponse]
-      session <- env.db.getSession(sid)
+      session <- env.sessionRepo.getSession(sid)
     yield {
       assertEquals(resp.status, Status.Ok)
       assertEquals(body.data.head.id, "found1")
@@ -405,7 +418,7 @@ class RoutesSpec extends CatsEffectSuite:
     )
     for
       sid <- createSession
-      _ <- env.db.replaceTopGames(games)
+      _ <- env.topGamesRepo.replaceTopGames(games)
       resp <- apiApp.run(withSession(Request[IO](Method.GET, uri"/top-game-ids"), sid))
       body <- resp.as[TopGameIdsResponse]
     yield {
@@ -417,7 +430,7 @@ class RoutesSpec extends CatsEffectSuite:
   test("GET /top-game-ids returns empty set when no top games stored") {
     for
       sid <- createSession
-      _ <- env.db.replaceTopGames(Nil)
+      _ <- env.topGamesRepo.replaceTopGames(Nil)
       resp <- apiApp.run(withSession(Request[IO](Method.GET, uri"/top-game-ids"), sid))
       body <- resp.as[TopGameIdsResponse]
     yield {
@@ -430,8 +443,8 @@ class RoutesSpec extends CatsEffectSuite:
     val first = List(TwitchCategory("old1", "Old Game", "https://img.test/old.jpg"))
     val second = List(TwitchCategory("new1", "New Game", "https://img.test/new.jpg"))
     for
-      _ <- env.db.replaceTopGames(first)
-      _ <- env.db.replaceTopGames(second)
-      ids <- env.db.getTopGameIds
+      _ <- env.topGamesRepo.replaceTopGames(first)
+      _ <- env.topGamesRepo.replaceTopGames(second)
+      ids <- env.topGamesRepo.getTopGameIds
     yield assertEquals(ids, Set("new1"))
   }

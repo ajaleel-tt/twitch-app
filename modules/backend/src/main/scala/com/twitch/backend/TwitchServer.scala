@@ -64,9 +64,15 @@ object TwitchServer extends IOApp.Simple:
         } yield xa
 
     transactorResource.use { xa =>
-      val db = new Database(xa, dialect)
+      val followRepo = new db.FollowRepository(xa, dialect)
+      val tagFilterRepo = new db.TagFilterRepository(xa, dialect)
+      val ignoredStreamerRepo = new db.IgnoredStreamerRepository(xa, dialect)
+      val userRepo = new db.UserRepository(xa)
+      val sessionRepo = new db.SessionRepository(xa)
+      val pushRepo = new db.PushSubscriptionRepository(xa, dialect)
+      val topGamesRepo = new db.TopGamesRepository(xa)
       for {
-        _ <- db.initDb
+        _ <- db.Schema.initDb(xa, dialect)
         pendingOAuthStates <- IO.ref(Set.empty[String])
         notificationQueues <- IO.ref(Map.empty[String, (String, Queue[IO, StreamNotification])])
         _ <- EmberClientBuilder.default[IO].build.use { client =>
@@ -91,7 +97,7 @@ object TwitchServer extends IOApp.Simple:
                   tokenCache <- IO.ref(Option.empty[(String, java.time.Instant)])
                   tokenMutex <- cats.effect.std.Mutex[IO]
                   _ <- IO.println("Push notifications enabled")
-                yield Some(new PushNotificationService(client, key.projectId, key, settings.pushParallelSends, db, tokenCache, tokenMutex))
+                yield Some(new PushNotificationService(client, key.projectId, key, settings.pushParallelSends, pushRepo, tokenCache, tokenMutex))
               case None =>
                 IO.println("Push notifications disabled (set FCM_SERVICE_ACCOUNT_JSON or FCM_SERVICE_ACCOUNT_KEY)").as(None)
             }.handleErrorWith { err =>
@@ -103,9 +109,9 @@ object TwitchServer extends IOApp.Simple:
           for
             pushService <- pushServiceIO
             twitchApi = new TwitchApiClient(clientId, clientSecret, client)
-            sessionManager = new auth.SessionManager(db, twitchApi)
-            authRoutes = new routes.AuthRoutes(clientId, redirectUri, twitchApi, pendingOAuthStates, db, emailService)
-            apiRoutes = new routes.ApiRoutes(clientId, sessionManager, twitchApi, db, notificationQueues, settings)
+            sessionManager = new auth.SessionManager(sessionRepo, twitchApi)
+            authRoutes = new routes.AuthRoutes(clientId, redirectUri, twitchApi, pendingOAuthStates, userRepo, sessionRepo, emailService)
+            apiRoutes = new routes.ApiRoutes(clientId, sessionManager, twitchApi, followRepo, tagFilterRepo, ignoredStreamerRepo, sessionRepo, pushRepo, topGamesRepo, notificationQueues, settings)
             httpApp = Router(
               "/api" -> apiRoutes.routes,
               "/" -> authRoutes.routes,
@@ -116,8 +122,8 @@ object TwitchServer extends IOApp.Simple:
               "/" -> frontendService
             ).orNotFound
             corsApp = CORS.policy.withAllowOriginAll(httpApp)
-            poller <- StreamPoller.make(clientId, clientSecret, client, db, notificationQueues, settings, pushService)
-            topGamesPoller <- TopGamesPoller.make(clientId, clientSecret, client, db, settings)
+            poller <- StreamPoller.make(clientId, clientSecret, client, followRepo, tagFilterRepo, ignoredStreamerRepo, pushRepo, notificationQueues, settings, pushService)
+            topGamesPoller <- TopGamesPoller.make(clientId, clientSecret, client, topGamesRepo, settings)
             _ <- (
               poller.start.void,
               topGamesPoller.start.void,

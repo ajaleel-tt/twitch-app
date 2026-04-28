@@ -10,12 +10,16 @@ import org.http4s.circe.CirceEntityDecoder.*
 import org.http4s.implicits.*
 import java.time.Instant
 import com.twitch.core.*
+import com.twitch.backend.db.*
 
 class StreamPoller(
     clientId: String,
     clientSecret: String,
     client: Client[IO],
-    db: Database,
+    followRepo: FollowRepository,
+    tagFilterRepo: TagFilterRepository,
+    ignoredStreamerRepo: IgnoredStreamerRepository,
+    pushRepo: PushSubscriptionRepository,
     notificationQueues: Ref[IO, Map[String, (String, Queue[IO, StreamNotification])]],
     appToken: Ref[IO, Option[String]],
     notifiedStreamIds: Ref[IO, Set[String]],
@@ -42,9 +46,9 @@ class StreamPoller(
 
   private def loadUserPreferences(userIds: Set[String]): IO[(Map[String, Set[String]], Map[String, List[com.twitch.core.TagFilter]], Map[String, Set[String]])] =
     for
-      followedByUser <- userIds.toList.traverse(uid => db.getFollowed(uid).map(cats => uid -> cats.map(_.id).toSet))
-      filtersByUser  <- userIds.toList.traverse(uid => db.getTagFilters(uid).map(filters => uid -> filters))
-      ignoredByUser  <- userIds.toList.traverse(uid => db.getIgnoredStreamers(uid).map(list => uid -> list.map(_.streamerId).toSet))
+      followedByUser <- userIds.toList.traverse(uid => followRepo.getFollowed(uid).map(cats => uid -> cats.map(_.id).toSet))
+      filtersByUser  <- userIds.toList.traverse(uid => tagFilterRepo.getTagFilters(uid).map(filters => uid -> filters))
+      ignoredByUser  <- userIds.toList.traverse(uid => ignoredStreamerRepo.getIgnoredStreamers(uid).map(list => uid -> list.map(_.streamerId).toSet))
     yield (followedByUser.toMap, filtersByUser.toMap, ignoredByUser.toMap)
 
   private def broadcastNotifications(notifications: List[StreamNotification]): IO[Unit] =
@@ -61,7 +65,7 @@ class StreamPoller(
       // Push delivery: database-driven, independent of SSE connections
       _ <- pushService.fold(IO.unit) { ps =>
         (for
-          pushUserIds <- db.getUsersFollowingCategories(byCategoryId.keySet)
+          pushUserIds <- followRepo.getUsersFollowingCategories(byCategoryId.keySet)
           (pushFollowed, pushFilters, pushIgnored) <- loadUserPreferences(pushUserIds)
           _ <- sendPushNotifications(ps, notifications, pushFollowed, pushFilters, pushIgnored)
         yield ()).handleErrorWith(e => IO.println(s"Push notification error: ${e.getMessage}")).start.void
@@ -79,7 +83,7 @@ class StreamPoller(
     val allFollowingUserIds = followedMap.filter { case (_, catIds) =>
       catIds.exists(byCategoryId.contains)
     }.keySet
-    db.getPushSubscriptionsForUsers(allFollowingUserIds).flatMap { subs =>
+    pushRepo.getPushSubscriptionsForUsers(allFollowingUserIds).flatMap { subs =>
       val subsByUser = subs.groupBy(_.userId)
       subsByUser.toList.traverse_ { case (userId, userSubs) =>
         val filtered = StreamLogic.filteredNotificationsForUser(userId, byCategoryId, followedMap, filtersMap, ignoredMap)
@@ -92,7 +96,7 @@ class StreamPoller(
   // flood the user with every stream that happens to be live at startup.
   private def seedOnce: IO[Unit] =
     for
-      allCategories <- db.getAllFollowedCategories
+      allCategories <- followRepo.getAllFollowedCategories
       _ <- IO.whenA(allCategories.nonEmpty) {
         for
           streams <- withTokenRefresh(token => fetchLiveStreams(token, allCategories.map(_.id)))
@@ -105,7 +109,7 @@ class StreamPoller(
 
   private def pollOnce: IO[Unit] =
     for
-      allCategories <- db.getAllFollowedCategories
+      allCategories <- followRepo.getAllFollowedCategories
       _ <- IO.whenA(allCategories.nonEmpty) {
         for
           streams <- withTokenRefresh(token => fetchLiveStreams(token, allCategories.map(_.id)))
@@ -131,7 +135,10 @@ object StreamPoller:
       clientId: String,
       clientSecret: String,
       client: Client[IO],
-      db: Database,
+      followRepo: FollowRepository,
+      tagFilterRepo: TagFilterRepository,
+      ignoredStreamerRepo: IgnoredStreamerRepository,
+      pushRepo: PushSubscriptionRepository,
       notificationQueues: Ref[IO, Map[String, (String, Queue[IO, StreamNotification])]],
       settings: AppSettings,
       pushService: Option[PushService] = None
@@ -139,4 +146,4 @@ object StreamPoller:
     for
       tokenRef <- IO.ref(Option.empty[String])
       notifiedRef <- IO.ref(Set.empty[String])
-    yield new StreamPoller(clientId, clientSecret, client, db, notificationQueues, tokenRef, notifiedRef, settings, pushService)
+    yield new StreamPoller(clientId, clientSecret, client, followRepo, tagFilterRepo, ignoredStreamerRepo, pushRepo, notificationQueues, tokenRef, notifiedRef, settings, pushService)

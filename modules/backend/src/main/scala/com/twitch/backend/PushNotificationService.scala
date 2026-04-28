@@ -11,6 +11,7 @@ import io.circe.*
 import io.circe.syntax.*
 import io.circe.parser.{decode => jsonDecode}
 import com.twitch.core.StreamNotification
+import com.twitch.backend.db.{PushSubscriptionRepository, PushSubscriptionRow}
 import java.security.KeyFactory
 import java.security.spec.PKCS8EncodedKeySpec
 import java.util.Base64
@@ -21,7 +22,7 @@ class PushNotificationService(
     projectId: String,
     serviceAccountKey: ServiceAccountKey,
     parallelSends: Int,
-    db: Database,
+    pushRepo: PushSubscriptionRepository,
     tokenCache: Ref[IO, Option[(String, Instant)]],
     tokenMutex: Mutex[IO]
 ) extends PushService:
@@ -128,7 +129,7 @@ class PushNotificationService(
         if resp.status.isSuccess then IO.pure(SendResult.Success)
         else resp.as[String].flatMap { body =>
           if resp.status.code == 404 || body.contains("UNREGISTERED") then
-            db.deletePushSubscription(token).as(SendResult.InvalidToken)
+            pushRepo.deletePushSubscription(token).as(SendResult.InvalidToken)
           else
             IO.println(s"FCM error for token ${token.take(10)}...: ${resp.status} $body")
               .as(SendResult.Failed)

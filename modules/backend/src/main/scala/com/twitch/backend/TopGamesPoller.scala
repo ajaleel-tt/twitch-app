@@ -2,6 +2,7 @@ package com.twitch.backend
 
 import cats.effect.*
 import com.twitch.core.*
+import com.twitch.backend.db.TopGamesRepository
 import org.http4s.circe.CirceEntityDecoder.*
 import org.http4s.client.Client
 import org.http4s.implicits.*
@@ -11,7 +12,7 @@ class TopGamesPoller(
     clientId: String,
     clientSecret: String,
     client: Client[IO],
-    db: Database,
+    topGamesRepo: TopGamesRepository,
     appToken: Ref[IO, Option[String]],
     settings: AppSettings
 ) extends TwitchPoller(clientId, clientSecret, client, appToken):
@@ -40,7 +41,7 @@ class TopGamesPoller(
     for
       games <- withTokenRefresh(fetchAllTopGames)
       unique = games.distinctBy(_.id)
-      _ <- db.replaceTopGames(unique)
+      _ <- topGamesRepo.replaceTopGames(unique)
       _ <- IO.println(s"TopGamesPoller: stored ${unique.size} top games")
     yield ()
 
@@ -58,9 +59,9 @@ object TopGamesPoller:
       clientId: String,
       clientSecret: String,
       client: Client[IO],
-      db: Database,
+      topGamesRepo: TopGamesRepository,
       settings: AppSettings
   ): IO[TopGamesPoller] =
     for
       tokenRef <- IO.ref(Option.empty[String])
-    yield new TopGamesPoller(clientId, clientSecret, client, db, tokenRef, settings)
+    yield new TopGamesPoller(clientId, clientSecret, client, topGamesRepo, tokenRef, settings)
