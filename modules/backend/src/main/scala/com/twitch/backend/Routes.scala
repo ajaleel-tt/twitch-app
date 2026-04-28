@@ -236,10 +236,10 @@ class Routes(
       req.as[AddTagFilterRequest].flatMap { body =>
         getSession(req).flatMap {
           case Some(data) =>
-            val tag = body.tag.trim
-            if tag.isEmpty || tag.length > 25 then BadRequest("Tag must be 1-25 characters")
-            else if body.filterType != "include" && body.filterType != "exclude" then BadRequest("filterType must be 'include' or 'exclude'")
-            else db.addTagFilter(data.user.id, body.filterType, tag) *> Ok("Filter added")
+            (Validation.validateTag(body.tag), Validation.validateFilterType(body.filterType)) match
+              case (Right(tag), Right(ft)) => db.addTagFilter(data.user.id, ft, tag) *> Ok("Filter added")
+              case (Left(err), _) => BadRequest(err)
+              case (_, Left(err)) => BadRequest(err)
           case None => Forbidden("Not logged in")
         }
       }
@@ -261,8 +261,9 @@ class Routes(
       req.as[AddIgnoredStreamerRequest].flatMap { body =>
         getSession(req).flatMap {
           case Some(data) =>
-            if body.streamerId.trim.isEmpty then BadRequest("streamerId is required")
-            else db.addIgnoredStreamer(data.user.id, body.streamerId, body.streamerLogin, body.streamerName) *> Ok("Streamer ignored")
+            Validation.validateNonEmpty(body.streamerId, "streamerId") match
+              case Right(_) => db.addIgnoredStreamer(data.user.id, body.streamerId, body.streamerLogin, body.streamerName) *> Ok("Streamer ignored")
+              case Left(err) => BadRequest(err)
           case None => Forbidden("Not logged in")
         }
       }
@@ -278,10 +279,9 @@ class Routes(
       req.as[PushRegisterRequest].flatMap { body =>
         getSession(req).flatMap {
           case Some(data) =>
-            if body.platform != "ios" && body.platform != "android" && body.platform != "web" then
-              BadRequest("platform must be 'ios', 'android', or 'web'")
-            else
-              db.savePushSubscription(data.user.id, body.token, body.platform) *> Ok("Registered")
+            Validation.validatePlatform(body.platform) match
+              case Right(platform) => db.savePushSubscription(data.user.id, body.token, platform) *> Ok("Registered")
+              case Left(err) => BadRequest(err)
           case None => Forbidden("Not logged in")
         }
       }
