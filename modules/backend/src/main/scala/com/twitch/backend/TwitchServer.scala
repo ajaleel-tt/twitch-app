@@ -103,10 +103,12 @@ object TwitchServer extends IOApp.Simple:
           for
             pushService <- pushServiceIO
             twitchApi = new TwitchApiClient(clientId, clientSecret, client)
-            routes = new Routes(clientId, redirectUri, twitchApi, pendingOAuthStates, db, notificationQueues, settings, emailService)
+            sessionManager = new auth.SessionManager(db, twitchApi)
+            authRoutes = new routes.AuthRoutes(clientId, redirectUri, twitchApi, pendingOAuthStates, db, emailService)
+            apiRoutes = new routes.ApiRoutes(clientId, sessionManager, twitchApi, db, notificationQueues, settings)
             httpApp = Router(
-              "/api" -> routes.apiRoutes,
-              "/" -> routes.authRoutes,
+              "/api" -> apiRoutes.routes,
+              "/" -> authRoutes.routes,
               "/" -> HttpRoutes.of[IO] {
                 case req @ GET -> Root =>
                   StaticFile.fromPath(fs2.io.file.Path(s"$staticDir/index.html"), Some(req)).getOrElseF(NotFound())

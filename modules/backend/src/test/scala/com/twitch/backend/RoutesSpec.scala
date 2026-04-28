@@ -49,7 +49,8 @@ class RoutesSpec extends CatsEffectSuite:
       IO.pure(TwitchTokenResponse("refreshed-token", 3600, None, None, "bearer"))
 
   case class TestEnv(
-      routes: Routes,
+      authRoutes: routes.AuthRoutes,
+      apiRoutes: routes.ApiRoutes,
       db: Database,
       pendingOAuthStates: Ref[IO, Set[String]],
       notificationQueues: Ref[IO, Map[String, (String, Queue[IO, StreamNotification])]]
@@ -67,25 +68,32 @@ class RoutesSpec extends CatsEffectSuite:
       _ <- Resource.eval(db.initDb)
       pendingStates <- Resource.eval(IO.ref(Set.empty[String]))
       notifQueues <- Resource.eval(IO.ref(Map.empty[String, (String, Queue[IO, StreamNotification])]))
-      routes = new Routes(
+      sessionManager = new auth.SessionManager(db, stubTwitchApi)
+      authRoutes = new routes.AuthRoutes(
         clientId = "test-client-id",
         redirectUri = "http://localhost:8080/auth/callback",
         twitchApi = stubTwitchApi,
         pendingOAuthStates = pendingStates,
         db = db,
-        notificationQueues = notifQueues,
-        settings = testSettings,
         emailService = None
       )
-    yield TestEnv(routes, db, pendingStates, notifQueues)
+      apiRoutes = new routes.ApiRoutes(
+        clientId = "test-client-id",
+        sessionManager = sessionManager,
+        twitchApi = stubTwitchApi,
+        db = db,
+        notificationQueues = notifQueues,
+        settings = testSettings
+      )
+    yield TestEnv(authRoutes, apiRoutes, db, pendingStates, notifQueues)
   )
 
   override def munitFixtures = List(envFixture)
 
   private def env = envFixture()
 
-  private def authApp = env.routes.authRoutes.orNotFound
-  private def apiApp = env.routes.apiRoutes.orNotFound
+  private def authApp = env.authRoutes.routes.orNotFound
+  private def apiApp = env.apiRoutes.routes.orNotFound
 
   // Helper: create a session and return the cookie value
   private def createSession: IO[String] =
@@ -314,6 +322,23 @@ class RoutesSpec extends CatsEffectSuite:
     yield {
       assertEquals(resp.status, Status.Ok)
       assertEquals(body.data.head.id, "found1")
+    }
+  }
+
+  // ── Token refresh ────────────────────────────────────────────────────
+
+  test("GET /search/categories refreshes expired token before searching") {
+    for
+      sid <- IO(java.util.UUID.randomUUID().toString)
+      expiredAt = java.time.Instant.now().minusSeconds(600)
+      _ <- env.db.createSession(sid, testUser, "old-token", Some("refresh-tok"), Some(expiredAt))
+      resp <- apiApp.run(withSession(Request[IO](Method.GET, uri"/search/categories?query=test"), sid))
+      body <- resp.as[TwitchSearchCategoriesResponse]
+      session <- env.db.getSession(sid)
+    yield {
+      assertEquals(resp.status, Status.Ok)
+      assertEquals(body.data.head.id, "found1")
+      assertEquals(session.get.accessToken, "refreshed-token", "Expected token to be refreshed in DB")
     }
   }
 
