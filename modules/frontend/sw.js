@@ -41,12 +41,11 @@ self.addEventListener('push', (event) => {
     payload = { notification: { title: 'Twitch Category Tracker', body: event.data.text() } };
   }
 
-  const notification = payload.notification || {};
-  const data = payload.data || {};
+  const data = payload.data || payload.notification || {};
 
-  const title = notification.title || 'Stream is live!';
+  const title = data.title || 'Stream is live!';
   const options = {
-    body: notification.body || '',
+    body: data.body || '',
     icon: '/icons/icon.svg',
     badge: '/icons/icon.svg',
     data: data,
