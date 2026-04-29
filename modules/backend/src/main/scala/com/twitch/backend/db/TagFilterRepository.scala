@@ -6,7 +6,7 @@ import doobie.implicits.*
 import com.twitch.core.TagFilter
 import com.twitch.backend.SqlDialect
 
-class TagFilterRepository(xa: Transactor[IO], dialect: SqlDialect):
+class TagFilterRepository(xa: Transactor[IO], dialect: SqlDialect) {
 
   def getTagFilters(userId: String): IO[List[TagFilter]] =
     sql"SELECT filter_type, tag FROM tag_filters WHERE user_id = $userId"
@@ -14,9 +14,9 @@ class TagFilterRepository(xa: Transactor[IO], dialect: SqlDialect):
       .to[List]
       .transact(xa)
 
-  def addTagFilter(userId: String, filterType: String, tag: String): IO[Unit] =
+  def addTagFilter(userId: String, filterType: String, tag: String): IO[Unit] = {
     val normalizedTag = tag.trim.toLowerCase
-    val stmt = dialect match
+    val stmt = dialect match {
       case SqlDialect.Postgres =>
         sql"""
           INSERT INTO tag_filters (user_id, filter_type, tag)
@@ -29,12 +29,17 @@ class TagFilterRepository(xa: Transactor[IO], dialect: SqlDialect):
           KEY(user_id, filter_type, tag)
           VALUES ($userId, $filterType, $normalizedTag)
         """
+    }
     stmt.update.run.transact(xa).void
+  }
 
-  def removeTagFilter(userId: String, filterType: String, tag: String): IO[Unit] =
+  def removeTagFilter(userId: String, filterType: String, tag: String): IO[Unit] = {
     val normalizedTag = tag.trim.toLowerCase
     sql"DELETE FROM tag_filters WHERE user_id = $userId AND filter_type = $filterType AND tag = $normalizedTag"
       .update
       .run
       .transact(xa)
       .void
+  }
+
+}

@@ -6,9 +6,9 @@ import doobie.*
 import doobie.implicits.*
 import com.twitch.backend.SqlDialect
 
-object Schema:
+object Schema {
 
-  def initDb(xa: Transactor[IO], dialect: SqlDialect): IO[Unit] =
+  def initDb(xa: Transactor[IO], dialect: SqlDialect): IO[Unit] = {
     val createFollowed = sql"""
       CREATE TABLE IF NOT EXISTS followed_categories (
         user_id VARCHAR NOT NULL,
@@ -102,3 +102,6 @@ object Schema:
       createFollowedCategoryIndex)
       .transact(xa)
       .void
+  }
+
+}

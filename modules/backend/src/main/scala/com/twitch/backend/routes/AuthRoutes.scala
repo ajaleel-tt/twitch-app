@@ -22,12 +22,12 @@ class AuthRoutes(
   sessionRepo: SessionRepository,
   twitchApi: TwitchApi,
   userRepo: UserRepository,
-):
+) {
 
   private val secureCookies = redirectUri.startsWith("https")
 
   private def sendWelcomeEmailIfNeeded(user: TwitchUser): IO[Unit] =
-    (user.email, emailService) match
+    (user.email, emailService) match {
       case (Some(email), Some(es)) =>
         es.sendWelcomeEmail(email, user.display_name)
           .flatMap(_ => userRepo.markWelcomeEmailSent(user.id))
@@ -40,6 +40,7 @@ class AuthRoutes(
         IO.println(
           s"Skipping welcome email for ${user.id} (no email or email service not configured)",
         )
+    }
 
   private object CodeQueryParamMatcher extends QueryParamDecoderMatcher[String]("code")
   private object StateQueryParamMatcher extends QueryParamDecoderMatcher[String]("state")
@@ -67,13 +68,14 @@ class AuthRoutes(
         user <- twitchApi.getUser(tokenResponse.access_token)
         _ <- IO.println(s"Found user: ${user.display_name}")
         existingUser <- userRepo.findUser(user.id)
-        _ <- existingUser match
+        _ <- existingUser match {
           case None =>
             userRepo.insertUser(user.id, user.login, user.display_name, user.email) *>
               sendWelcomeEmailIfNeeded(user)
           case Some(existing) =>
             userRepo.updateLastLogin(user.id, user.login, user.display_name, user.email) *>
               (if !existing.welcomeEmailSent then sendWelcomeEmailIfNeeded(user) else IO.unit)
+        }
         sessionId = UUID.randomUUID().toString
         tokenExpiresAt = Some(Instant.now().plusSeconds(tokenResponse.expires_in.toLong))
         _ <- sessionRepo.createSession(
@@ -102,3 +104,5 @@ class AuthRoutes(
           InternalServerError(s"Auth flow failed. Check server logs. Error: ${err.getMessage}")
       }
   }
+
+}

@@ -20,37 +20,40 @@ class TwitchApiClient(
   client: Client[IO],
   clientId: String,
   clientSecret: String,
-) extends TwitchApi:
+) extends TwitchApi {
 
   def searchCategories(
     query: String,
     after: Option[String],
     accessToken: String,
     pageSize: Int,
-  ): IO[TwitchSearchCategoriesResponse] =
+  ): IO[TwitchSearchCategoriesResponse] = {
     val uri = uri"https://api.twitch.tv/helix/search/categories"
       .withQueryParam("query", query)
       .withQueryParam("first", pageSize.toString)
       .withOptionQueryParam("after", after)
     client.expect[TwitchSearchCategoriesResponse](authedRequest(uri, accessToken))
+  }
 
   def searchChannels(
     query: String,
     after: Option[String],
     accessToken: String,
     pageSize: Int,
-  ): IO[TwitchSearchChannelsResponse] =
+  ): IO[TwitchSearchChannelsResponse] = {
     val uri = uri"https://api.twitch.tv/helix/search/channels"
       .withQueryParam("query", query)
       .withQueryParam("first", pageSize.toString)
       .withOptionQueryParam("after", after)
     client.expect[TwitchSearchChannelsResponse](authedRequest(uri, accessToken))
+  }
 
-  def getUser(accessToken: String): IO[TwitchUser] =
+  def getUser(accessToken: String): IO[TwitchUser] = {
     val req = authedRequest(uri"https://api.twitch.tv/helix/users", accessToken)
     client.expect[TwitchUsersResponse](req).map(_.data.head)
+  }
 
-  def exchangeCode(code: String, redirectUri: String): IO[TwitchTokenResponse] =
+  def exchangeCode(code: String, redirectUri: String): IO[TwitchTokenResponse] = {
     val req =
       Request[IO](method = Method.POST, uri = uri"https://id.twitch.tv/oauth2/token").withEntity(
         UrlForm(
@@ -72,8 +75,9 @@ class TwitchApiClient(
           )
         }
     }
+  }
 
-  def refreshToken(refreshToken: String): IO[TwitchTokenResponse] =
+  def refreshToken(refreshToken: String): IO[TwitchTokenResponse] = {
     val req =
       Request[IO](method = Method.POST, uri = uri"https://id.twitch.tv/oauth2/token").withEntity(
         UrlForm(
@@ -87,9 +91,12 @@ class TwitchApiClient(
       if resp.status.isSuccess then resp.as[TwitchTokenResponse]
       else IO.raiseError(new RuntimeException(s"Token refresh failed: ${resp.status}"))
     }
+  }
 
   private def authedRequest(uri: Uri, accessToken: String): Request[IO] =
     Request[IO](method = Method.GET, uri = uri).putHeaders(
       Authorization(Credentials.Token(AuthScheme.Bearer, accessToken)),
       Header.Raw(ci"Client-Id", clientId),
     )
+
+}

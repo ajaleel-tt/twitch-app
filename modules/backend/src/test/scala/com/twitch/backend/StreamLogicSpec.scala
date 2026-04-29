@@ -8,7 +8,7 @@ import munit.FunSuite
 
 import com.twitch.core.*
 
-class StreamLogicSpec extends FunSuite:
+class StreamLogicSpec extends FunSuite {
 
   // ── Test fixtures ──────────────────────────────────────────────────
 
@@ -445,3 +445,5 @@ class StreamLogicSpec extends FunSuite:
     )
     assertEquals(result.map(_.streamerId), List("u2"))
   }
+
+}

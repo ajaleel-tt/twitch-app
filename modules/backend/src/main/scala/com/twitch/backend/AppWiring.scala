@@ -18,14 +18,14 @@ case class App(
   topGamesPoller: TopGamesPoller,
 )
 
-object AppWiring:
+object AppWiring {
 
   def build(
     config: ServerConfig,
     settings: AppSettings,
     xa: Transactor[IO],
     client: Client[IO],
-  ): IO[App] =
+  ): IO[App] = {
     val followRepo = new db.FollowRepository(xa, config.dialect)
     val tagFilterRepo = new db.TagFilterRepository(xa, config.dialect)
     val ignoredStreamerRepo = new db.IgnoredStreamerRepository(xa, config.dialect)
@@ -46,21 +46,23 @@ object AppWiring:
         ),
       )
 
-    val pushServiceIO: IO[Option[PushNotificationService]] =
-      val keyIO = sys.env.get("FCM_SERVICE_ACCOUNT_JSON") match
+    val pushServiceIO: IO[Option[PushNotificationService]] = {
+      val keyIO = sys.env.get("FCM_SERVICE_ACCOUNT_JSON") match {
         case Some(json) => ServiceAccountKey.fromJson(json).map(Some(_))
         case None =>
-          sys.env.get("FCM_SERVICE_ACCOUNT_KEY") match
+          sys.env.get("FCM_SERVICE_ACCOUNT_KEY") match {
             case Some(keyPath) => ServiceAccountKey.fromFile(keyPath).map(Some(_))
             case None => IO.none
+          }
+      }
       keyIO
         .flatMap {
           case Some(key) =>
-            for
+            for {
               tokenCache <- IO.ref(Option.empty[(String, java.time.Instant)])
               tokenMutex <- cats.effect.std.Mutex[IO]
               _ <- IO.println("Push notifications enabled")
-            yield Some(
+            } yield Some(
               new PushNotificationService(
                 client = client,
                 parallelSends = settings.pushParallelSends,
@@ -79,8 +81,9 @@ object AppWiring:
         .handleErrorWith { err =>
           IO.println(s"Warning: Failed to load FCM service account key: ${err.getMessage}").as(None)
         }
+    }
 
-    for
+    for {
       _ <- db.Schema.initDb(xa, config.dialect)
       pendingOAuthStates <- IO.ref(Set.empty[String])
       notificationQueues <- IO.ref(Map.empty[String, (String, Queue[IO, StreamNotification])])
@@ -145,4 +148,7 @@ object AppWiring:
         settings = settings,
         topGamesRepo = topGamesRepo,
       )
-    yield App(corsApp, poller, topGamesPoller)
+    } yield App(corsApp, poller, topGamesPoller)
+  }
+
+}

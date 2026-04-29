@@ -27,7 +27,7 @@ class PushNotificationService(
   serviceAccountKey: ServiceAccountKey,
   tokenCache: Ref[IO, Option[(String, Instant)]],
   tokenMutex: Mutex[IO],
-) extends PushService:
+) extends PushService {
 
   private val fcmUri = Uri.unsafeFromString(
     s"https://fcm.googleapis.com/v1/projects/$projectId/messages:send",
@@ -61,23 +61,25 @@ class PushNotificationService(
         )
       client.run(req).use { resp =>
         resp.as[String].flatMap { body =>
-          jsonDecode[Json](body) match
+          jsonDecode[Json](body) match {
             case Right(json) =>
               val token = json.hcursor.get[String]("access_token")
               val expiresIn = json.hcursor.get[Long]("expires_in")
-              (token, expiresIn) match
+              (token, expiresIn) match {
                 case (Right(t), Right(e)) => IO.pure((t, e))
                 case _ =>
                   IO.raiseError(
                     new RuntimeException(s"Failed to parse OAuth token response: $body"),
                   )
+              }
             case Left(err) =>
               IO.raiseError(new RuntimeException(s"Failed to parse OAuth response: $body"))
+          }
         }
       }
     }
 
-  private def buildJwt(now: Instant): String =
+  private def buildJwt(now: Instant): String = {
     val header = Json.obj(
       "alg" -> "RS256".asJson,
       "typ" -> "JWT".asJson,
@@ -111,6 +113,7 @@ class PushNotificationService(
     val signature = encoder.encodeToString(sig.sign())
 
     s"$signingInput.$signature"
+  }
 
   def sendToDevice(token: String, notification: StreamNotification): IO[SendResult] =
     getAccessToken
@@ -156,15 +159,19 @@ class PushNotificationService(
   def sendBatch(
     subscriptions: List[PushSubscriptionRow],
     notifications: List[StreamNotification],
-  ): IO[Unit] =
-    val sends = for
+  ): IO[Unit] = {
+    val sends = for {
       sub <- subscriptions
       notif <- notifications
-    yield sendToDevice(sub.deviceToken, notif)
+    } yield sendToDevice(sub.deviceToken, notif)
     sends.parTraverseN(parallelSends)(identity).void
+  }
 
-enum SendResult:
+}
+
+enum SendResult {
   case Success, InvalidToken, Failed
+}
 
 case class ServiceAccountKey(
   clientEmail: String,
@@ -172,27 +179,29 @@ case class ServiceAccountKey(
   projectId: String,
 )
 
-object ServiceAccountKey:
+object ServiceAccountKey {
 
   private def parse(content: String, source: String): IO[ServiceAccountKey] =
-    jsonDecode[Json](content) match
+    jsonDecode[Json](content) match {
       case Right(json) =>
         val cursor = json.hcursor
         (
           cursor.get[String]("client_email"),
           cursor.get[String]("private_key"),
           cursor.get[String]("project_id"),
-        ) match
+        ) match {
           case (Right(email), Right(key), Right(pid)) =>
             IO.pure(ServiceAccountKey(clientEmail = email, privateKey = key, projectId = pid))
           case _ =>
             IO.raiseError(new RuntimeException(s"Invalid service account key from $source"))
+        }
       case Left(err) =>
         IO.raiseError(
           new RuntimeException(
             s"Failed to parse service account key from $source: ${err.getMessage}",
           ),
         )
+    }
 
   def fromJson(json: String): IO[ServiceAccountKey] =
     parse(json, "FCM_SERVICE_ACCOUNT_JSON env var")
@@ -203,3 +212,5 @@ object ServiceAccountKey:
       try source.mkString
       finally source.close()
     }.flatMap(parse(_, s"file $path"))
+
+}

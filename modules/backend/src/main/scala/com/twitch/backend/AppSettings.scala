@@ -18,9 +18,9 @@ case class AppSettings(
   topGamesPollInterval: FiniteDuration,
 )
 
-object AppSettings:
+object AppSettings {
 
-  def load: AppSettings =
+  def load: AppSettings = {
     val config = ConfigFactory.load().getConfig("twitch-app")
     AppSettings(
       emailFrom = config.getString("email.from"),
@@ -35,3 +35,6 @@ object AppSettings:
       topGamesCount = config.getInt("top-games.count"),
       topGamesPollInterval = config.getDuration("top-games.poll-interval").toMillis.millis,
     )
+  }
+
+}

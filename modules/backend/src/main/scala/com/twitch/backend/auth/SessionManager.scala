@@ -17,10 +17,10 @@ case class SessionData(
   user: TwitchUser,
 )
 
-class SessionManager(sessionRepo: SessionRepository, twitchApi: TwitchApi):
+class SessionManager(sessionRepo: SessionRepository, twitchApi: TwitchApi) {
 
   def getSession(req: Request[IO]): IO[Option[SessionData]] =
-    req.cookies.find(_.name == "session_id").map(_.content) match
+    req.cookies.find(_.name == "session_id").map(_.content) match {
       case None => IO.pure(None)
       case Some(sid) =>
         sessionRepo
@@ -36,8 +36,9 @@ class SessionManager(sessionRepo: SessionRepository, twitchApi: TwitchApi):
               ),
             ),
           )
+    }
 
-  def refreshTokenIfNeeded(data: SessionData): IO[SessionData] =
+  def refreshTokenIfNeeded(data: SessionData): IO[SessionData] = {
     val needsRefresh =
       data.tokenExpiresAt.exists(expiresAt => Instant.now().getEpochSecond >= expiresAt - 300)
     if !needsRefresh || data.refreshToken.isEmpty then IO.pure(data)
@@ -61,3 +62,6 @@ class SessionManager(sessionRepo: SessionRepository, twitchApi: TwitchApi):
             )
         }
         .handleErrorWith(_ => IO.pure(data))
+  }
+
+}

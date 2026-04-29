@@ -9,21 +9,21 @@ import doobie.h2.H2Transactor
 import doobie.hikari.HikariTransactor
 import com.zaxxer.hikari.HikariConfig
 
-object TwitchServer extends IOApp.Simple:
+object TwitchServer extends IOApp.Simple {
 
   private val config = ServerConfig.fromEnv
   private val settings = AppSettings.load
 
-  def run: IO[Unit] =
+  def run: IO[Unit] = {
     val transactorResource: Resource[IO, doobie.Transactor[IO]] =
-      if config.dialect == SqlDialect.Postgres then
+      if config.dialect == SqlDialect.Postgres then {
         val hikariConfig = new HikariConfig()
         hikariConfig.setDriverClassName("org.postgresql.Driver")
         hikariConfig.setJdbcUrl(config.dbUrl)
         config.dbUser.foreach(hikariConfig.setUsername)
         config.dbPassword.foreach(hikariConfig.setPassword)
         HikariTransactor.fromHikariConfig[IO](hikariConfig)
-      else
+      } else
         for {
           ec <- Resource.eval(IO.executionContext)
           xa <- H2Transactor.newH2Transactor[IO](config.dbUrl, "sa", "", ec)
@@ -31,7 +31,7 @@ object TwitchServer extends IOApp.Simple:
 
     transactorResource.use { xa =>
       EmberClientBuilder.default[IO].build.use { client =>
-        for
+        for {
           app <- AppWiring.build(config, settings, xa, client)
           host = host"0.0.0.0"
           port = Port.fromInt(config.port).getOrElse(port"8080")
@@ -47,6 +47,9 @@ object TwitchServer extends IOApp.Simple:
                 .build
                 .useForever,
           ).parTupled
-        yield ()
+        } yield ()
       }
     }
+  }
+
+}
