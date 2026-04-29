@@ -121,11 +121,9 @@ class PushNotificationService(
         val payload = Json.obj(
           "message" -> Json.obj(
             "token" -> token.asJson,
-            "notification" -> Json.obj(
+            "data" -> Json.obj(
               "title" -> s"${notification.streamerName} is live!".asJson,
               "body" -> s"Playing ${notification.categoryName}: ${notification.streamTitle}".asJson,
-            ),
-            "data" -> Json.obj(
               "streamerId" -> notification.streamerId.asJson,
               "streamerLogin" -> notification.streamerLogin.asJson,
               "categoryId" -> notification.categoryId.asJson,
