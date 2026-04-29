@@ -148,7 +148,7 @@ object IgnoredStreamersSection:
                   .fetchIgnoredStreamers
                   .flatMap(streamers =>
                     state.update(m =>
-                      m.copy(ignoredStreamers = IgnoredStreamerState(streamers, "", Nil)),
+                      m.copy(ignoredStreamers = IgnoredStreamerState(streamers = streamers)),
                     ),
                   )).start.void,
             )

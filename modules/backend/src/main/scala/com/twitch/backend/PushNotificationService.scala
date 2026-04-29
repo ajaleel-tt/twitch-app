@@ -21,10 +21,10 @@ import com.twitch.core.StreamNotification
 
 class PushNotificationService(
   client: Client[IO],
-  projectId: String,
-  serviceAccountKey: ServiceAccountKey,
   parallelSends: Int,
+  projectId: String,
   pushRepo: PushSubscriptionRepository,
+  serviceAccountKey: ServiceAccountKey,
   tokenCache: Ref[IO, Option[(String, Instant)]],
   tokenMutex: Mutex[IO],
 ) extends PushService:

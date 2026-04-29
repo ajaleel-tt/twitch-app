@@ -456,15 +456,15 @@ class RoutesSpec extends CatsEffectSuite:
       queues <- env.notificationQueues.get
       (_, queue)   = queues(sid)
       notification = StreamNotification(
-        "cat1",
-        "Test Game",
-        "u1",
-        "streamer",
-        "Streamer",
-        "Title",
-        100,
-        "thumb.jpg",
-        List("English"),
+        categoryId = "cat1",
+        categoryName = "Test Game",
+        streamerId = "u1",
+        streamerLogin = "streamer",
+        streamerName = "Streamer",
+        streamTitle = "Title",
+        tags = List("English"),
+        thumbnailUrl = "thumb.jpg",
+        viewerCount = 100,
       )
       _ <- queue.offer(notification)
       // Read one event from the SSE body

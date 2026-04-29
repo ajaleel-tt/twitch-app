@@ -17,9 +17,9 @@ import com.twitch.core.{
 }
 
 class TwitchApiClient(
+  client: Client[IO],
   clientId: String,
   clientSecret: String,
-  client: Client[IO],
 ) extends TwitchApi:
 
   def searchCategories(

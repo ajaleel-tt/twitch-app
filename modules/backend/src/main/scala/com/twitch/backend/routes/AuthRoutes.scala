@@ -16,12 +16,12 @@ import com.twitch.core.TwitchUser
 
 class AuthRoutes(
   clientId: String,
-  redirectUri: String,
-  twitchApi: TwitchApi,
-  pendingOAuthStates: Ref[IO, Set[String]],
-  userRepo: UserRepository,
-  sessionRepo: SessionRepository,
   emailService: Option[EmailNotifier],
+  pendingOAuthStates: Ref[IO, Set[String]],
+  redirectUri: String,
+  sessionRepo: SessionRepository,
+  twitchApi: TwitchApi,
+  userRepo: UserRepository,
 ):
 
   private val secureCookies = redirectUri.startsWith("https")

@@ -11,12 +11,12 @@ import com.twitch.backend.db.TopGamesRepository
 import com.twitch.core.{TwitchCategory, TwitchSearchCategoriesResponse}
 
 class TopGamesPoller(
+  appToken: Ref[IO, Option[String]],
+  client: Client[IO],
   clientId: String,
   clientSecret: String,
-  client: Client[IO],
-  topGamesRepo: TopGamesRepository,
-  appToken: Ref[IO, Option[String]],
   settings: AppSettings,
+  topGamesRepo: TopGamesRepository,
 ) extends TwitchPoller(clientId, clientSecret, client, appToken):
 
   private def fetchTopGamesPage(
@@ -66,18 +66,18 @@ class TopGamesPoller(
 object TopGamesPoller:
 
   def make(
+    client: Client[IO],
     clientId: String,
     clientSecret: String,
-    client: Client[IO],
-    topGamesRepo: TopGamesRepository,
     settings: AppSettings,
+    topGamesRepo: TopGamesRepository,
   ): IO[TopGamesPoller] =
     for tokenRef <- IO.ref(Option.empty[String])
     yield new TopGamesPoller(
+      appToken = tokenRef,
+      client = client,
       clientId = clientId,
       clientSecret = clientSecret,
-      client = client,
-      topGamesRepo = topGamesRepo,
-      appToken = tokenRef,
       settings = settings,
+      topGamesRepo = topGamesRepo,
     )

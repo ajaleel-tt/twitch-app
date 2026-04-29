@@ -9,8 +9,8 @@ import io.circe.*
 import io.circe.syntax.*
 
 class EmailService(
-  client: Client[IO],
   apiKey: String,
+  client: Client[IO],
   fromEmail: String,
   fromName: String,
 ) extends EmailNotifier:

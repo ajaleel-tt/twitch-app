@@ -10,11 +10,11 @@ import com.twitch.backend.db.SessionRepository
 import com.twitch.core.TwitchUser
 
 case class SessionData(
-  user: TwitchUser,
   accessToken: String,
   refreshToken: Option[String],
-  tokenExpiresAt: Option[Long],
   sessionId: String,
+  tokenExpiresAt: Option[Long],
+  user: TwitchUser,
 )
 
 class SessionManager(sessionRepo: SessionRepository, twitchApi: TwitchApi):
@@ -28,11 +28,11 @@ class SessionManager(sessionRepo: SessionRepository, twitchApi: TwitchApi):
           .map(
             _.map(row =>
               SessionData(
-                row.toUser,
-                row.accessToken,
-                row.refreshToken,
-                row.tokenExpiresAt,
-                row.sessionId,
+                accessToken = row.accessToken,
+                refreshToken = row.refreshToken,
+                sessionId = row.sessionId,
+                tokenExpiresAt = row.tokenExpiresAt,
+                user = row.toUser,
               ),
             ),
           )

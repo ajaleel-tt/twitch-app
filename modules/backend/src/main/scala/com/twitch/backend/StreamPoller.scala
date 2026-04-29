@@ -20,18 +20,18 @@ import com.twitch.backend.db.{
 import com.twitch.core.{StreamNotification, TwitchStream, TwitchStreamsResponse}
 
 class StreamPoller(
+  appToken: Ref[IO, Option[String]],
+  client: Client[IO],
   clientId: String,
   clientSecret: String,
-  client: Client[IO],
   followRepo: FollowRepository,
-  tagFilterRepo: TagFilterRepository,
   ignoredStreamerRepo: IgnoredStreamerRepository,
-  pushRepo: PushSubscriptionRepository,
   notificationQueues: Ref[IO, Map[String, (String, Queue[IO, StreamNotification])]],
-  appToken: Ref[IO, Option[String]],
   notifiedStreamIds: Ref[IO, Set[String]],
-  settings: AppSettings,
+  pushRepo: PushSubscriptionRepository,
   pushService: Option[PushService],
+  settings: AppSettings,
+  tagFilterRepo: TagFilterRepository,
 ) extends TwitchPoller(clientId, clientSecret, client, appToken):
 
   private def fetchStreamsPage(
@@ -194,31 +194,31 @@ class StreamPoller(
 object StreamPoller:
 
   def make(
+    client: Client[IO],
     clientId: String,
     clientSecret: String,
-    client: Client[IO],
     followRepo: FollowRepository,
-    tagFilterRepo: TagFilterRepository,
     ignoredStreamerRepo: IgnoredStreamerRepository,
-    pushRepo: PushSubscriptionRepository,
     notificationQueues: Ref[IO, Map[String, (String, Queue[IO, StreamNotification])]],
-    settings: AppSettings,
+    pushRepo: PushSubscriptionRepository,
     pushService: Option[PushService] = None,
+    settings: AppSettings,
+    tagFilterRepo: TagFilterRepository,
   ): IO[StreamPoller] =
     for
       tokenRef    <- IO.ref(Option.empty[String])
       notifiedRef <- IO.ref(Set.empty[String])
     yield new StreamPoller(
+      appToken = tokenRef,
+      client = client,
       clientId = clientId,
       clientSecret = clientSecret,
-      client = client,
       followRepo = followRepo,
-      tagFilterRepo = tagFilterRepo,
       ignoredStreamerRepo = ignoredStreamerRepo,
-      pushRepo = pushRepo,
       notificationQueues = notificationQueues,
-      appToken = tokenRef,
       notifiedStreamIds = notifiedRef,
-      settings = settings,
+      pushRepo = pushRepo,
       pushService = pushService,
+      settings = settings,
+      tagFilterRepo = tagFilterRepo,
     )
