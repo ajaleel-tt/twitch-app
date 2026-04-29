@@ -4,11 +4,15 @@ This project follows the [official Scala style guide](https://docs.scala-lang.or
 
 Goals: **readability**, **consistency**, **diff-friendliness**.
 
-### Adoption Policy
-This guide applies to **new and changed code**. Existing code is not required to be retroactively reformatted. When modifying a file, apply these rules to the lines you touch. Whole-file reformatting is welcome but should be done in dedicated cleanup commits, not mixed with functional changes.
+### Compiler Enforcement
+Backend and core modules compile with `-new-syntax -no-indent`, which means:
+- Scala 3 syntax is required (`if ... then`, `while ... do`)
+- Significant indentation (braceless syntax) is forbidden — braces are required for all bodies
+
+Frontend is exempt from these flags due to generated code (`scalawind.scala`).
 
 ### Excluded Files
-- **Generated code** (e.g., `scalawind.scala`) is excluded from all rules in this guide.
+- **Generated code** (e.g., `scalawind.scala`) is excluded from all style rules.
 - **Wire-format models** have specific naming exceptions documented in Section 2.
 
 ---
@@ -24,30 +28,26 @@ This guide applies to **new and changed code**. Existing code is not required to
 - Exemptions: SQL string fragments in doobie queries, and long string literals that cannot be reasonably broken.
 
 ### Trailing Commas
-When each element is on its own line, the **last element must have a trailing comma**. This ensures adding a new element is a one-line diff.
+When each element is on its own line, the **last element must have a trailing comma**.
 
 ```scala
 // GOOD
 case class ServerConfig(
-    baseUrl: String,
-    clientId: String,
-    clientSecret: String,
-    port: Int,
+  baseUrl: String,
+  clientId: String,
+  port: Int,
 )
 
 // BAD - missing trailing comma
 case class ServerConfig(
-    baseUrl: String,
-    clientId: String,
-    clientSecret: String,
-    port: Int
+  baseUrl: String,
+  clientId: String,
+  port: Int
 )
 ```
 
-This applies to: case class fields, function parameters, function arguments, collection literals, and import groups.
-
 ### Alignment
-Do not align `=` signs, `->` arrows, or type annotations across consecutive lines. Each line stands on its own.
+Do not align `=` signs, `->` arrows, or type annotations across consecutive lines.
 
 ```scala
 // GOOD
@@ -55,7 +55,7 @@ val followRepo = new db.FollowRepository(xa, config.dialect)
 val tagFilterRepo = new db.TagFilterRepository(xa, config.dialect)
 val userRepo = new db.UserRepository(xa)
 
-// BAD - unnecessary column alignment
+// BAD
 val followRepo    = new db.FollowRepository(xa, config.dialect)
 val tagFilterRepo = new db.TagFilterRepository(xa, config.dialect)
 val userRepo      = new db.UserRepository(xa)
@@ -87,23 +87,15 @@ Follow the [official naming conventions](https://docs.scala-lang.org/style/namin
 - **Parentheses signal side effects**: include `()` on no-arg methods with side effects; omit for pure accessors.
 
 ### Wire-Format Models (Exception)
-Case classes that map directly to external JSON APIs (e.g., Twitch API responses) **must use the field names from the wire format**, even when that means `snake_case`. These models rely on Circe's `derives Codec.AsObject` to automatically match JSON keys to field names. Renaming fields to `camelCase` would break serialization unless custom codecs are added.
+Case classes that map directly to external JSON APIs (e.g., Twitch API responses) **must use the field names from the wire format**, even when that means `snake_case`. These models rely on Circe's `derives Codec.AsObject` to automatically match JSON keys to field names.
 
 ```scala
 // CORRECT - matches Twitch API JSON field names
 case class TwitchStream(
-    game_id: String,
-    game_name: String,
-    id: String,
-    started_at: String,
-    thumbnail_url: String,
-    title: String,
-    `type`: String,
-    user_id: String,
-    user_login: String,
-    user_name: String,
-    viewer_count: Int,
-    tags: Option[List[String]] = None,
+  game_id: String,
+  game_name: String,
+  id: String,
+  tags: Option[List[String]] = None,
 ) derives Codec.AsObject
 ```
 
@@ -113,61 +105,15 @@ Internal models that do not map to an external API use standard `camelCase`.
 
 ## 3. Ordering
 
-### Prefer Alphabetical for Unordered Data
+**Prefer alphabetical ordering** for case class fields, function parameters, and named arguments at call sites when the data is unordered (config objects, DTOs, settings).
 
-**Prefer alphabetical ordering** for case class fields, function parameters, and named arguments at call sites when the data is unordered (config objects, DTOs, settings). Alphabetical ordering makes it easy to find fields in large declarations and produces predictable diffs.
-
-**Preserve semantic or API order** when it aids readability — for example, when parameters form a logical sequence (e.g., `host`/`port`/`path`), when a constructor mirrors a builder chain, or when the order matches an external API contract.
+**Preserve semantic or API order** when it aids readability — for example, when parameters form a logical sequence, or when the order matches an external API contract.
 
 When in doubt, alphabetical is the safe default.
 
 ### Always Alphabetical
 - Members within an import group: `import cats.effect.{IO, Ref, Resource}`
 - Named arguments at call sites for config/DTO constructors
-
-### Examples
-
-Config-style case class (alphabetical):
-```scala
-case class AppSettings(
-    emailFrom: String,
-    emailFromName: String,
-    parallelCategories: Int,
-    pollerInterval: FiniteDuration,
-    pushParallelSends: Int,
-    recentlyLiveWindow: FiniteDuration,
-    searchPageSize: Int,
-    sseReconnectDelay: FiniteDuration,
-    streamsPageSize: Int,
-    topGamesCount: Int,
-    topGamesPollInterval: FiniteDuration,
-)
-```
-
-Named arguments at call site (alphabetical):
-```scala
-ServerConfig(
-    baseUrl = baseUrl,
-    clientId = clientId,
-    clientSecret = clientSecret,
-    dbPassword = password,
-    dbUrl = jdbcUrl,
-    dbUser = user,
-    dialect = dialect,
-    port = port,
-    redirectUri = s"$baseUrl/auth/callback",
-    staticDir = staticDir,
-)
-```
-
-Semantic order is fine when it helps (e.g., a pipeline that reads left-to-right):
-```scala
-def fetchStreamsPage(
-    token: String,
-    categoryId: String,
-    cursor: Option[String],
-): IO[TwitchStreamsResponse] =
-```
 
 ### Exceptions
 - `using`/`implicit` parameters always come last (language requirement).
@@ -184,25 +130,8 @@ When a function accepts **more than one parameter of the same type**, callers **
 // BAD - two Strings, easy to swap
 twitchApi.exchangeCode(code, redirectUri)
 
-// GOOD - named arguments prevent confusion
-twitchApi.exchangeCode(
-    code = code,
-    redirectUri = redirectUri,
-)
-
-// OK - only one String parameter, no ambiguity
-IO.println(s"Server started")
-
-// BAD - four Strings, impossible to verify correctness at a glance
-new EmailService(client, key, settings.emailFrom, settings.emailFromName)
-
 // GOOD
-new EmailService(
-    apiKey = key,
-    client = client,
-    fromEmail = settings.emailFrom,
-    fromName = settings.emailFromName,
-)
+twitchApi.exchangeCode(code = code, redirectUri = redirectUri)
 ```
 
 ### Exemptions
@@ -217,27 +146,10 @@ new EmailService(
 When an operator chain (`*>`, `>>`, `<*`, `>>=`) would exceed 100 characters, break it across lines. **End each line with the operator** so Scala does not insert semicolons. Continuations indent 2 spaces.
 
 ```scala
-// BAD - 132 characters, unreadable
-IO.println("starting") *> seedOnce.handleErrorWith(e => IO.println(s"error: $e")) *> (IO.sleep(interval) *> pollOnce).foreverM
-
-// GOOD - broken at operators
+// GOOD
 IO.println("starting") *>
   seedOnce.handleErrorWith(e => IO.println(s"error: $e")) *>
   (IO.sleep(interval) *> pollOnce).foreverM
-```
-
-For long database init chains:
-```scala
-// BAD - one enormous line
-(createFollowed *> createTagFilters *> createIgnoredStreamers *> createSessions *> createUsers).transact(xa).void
-
-// GOOD
-(createFollowed *>
-  createTagFilters *>
-  createIgnoredStreamers *>
-  createSessions *>
-  createUsers
-).transact(xa).void
 ```
 
 ### Method Chains
@@ -246,7 +158,6 @@ Break with the dot at the start of the continuation line:
 uri"https://api.twitch.tv/helix/streams"
   .withQueryParam("game_id", categoryId)
   .withQueryParam("first", pageSize.toString)
-  .withOptionQueryParam("after", after)
 ```
 
 ---
@@ -272,52 +183,29 @@ Prefer explicit imports for Java standard library packages, project/domain packa
 
 ## 7. Declarations
 
-### Case Classes
-- Fields on separate lines when more than 2 fields.
-- Prefer alphabetical field ordering for config/DTO-like classes; preserve semantic order when it aids readability (see Section 3).
-- Trailing comma on the last field.
-- `derives` clause on the closing parenthesis line.
-- Single-field case classes may be on one line.
+### Braces Required (Backend/Core)
+All class, object, trait, and enum bodies must use braces. This is enforced by `-no-indent`.
 
 ```scala
-case class FollowRequest(
-    category: TwitchCategory,
-) derives Codec.AsObject
+object AppSettings {
+  def load: IO[AppSettings] = IO.blocking { ... }
+}
 
-case class StreamNotification(
-    categoryId: String,
-    categoryName: String,
-    streamerId: String,
-    streamerLogin: String,
-    streamerName: String,
-    streamTitle: String,
-    tags: List[String] = Nil,
-    thumbnailUrl: String,
-    viewerCount: Int,
-) derives Codec.AsObject
+enum SqlDialect {
+  case H2, Postgres
+}
 ```
 
-Note: fields with default values sort alphabetically like any other field (unless they depend on another parameter's value).
+### Case Classes
+- Fields on separate lines when more than 2 fields.
+- Prefer alphabetical field ordering for config/DTO-like classes (see Section 3).
+- Trailing comma on the last field.
+- `derives` clause on the closing parenthesis line.
 
 ### Method Signatures
 - **Public methods must have explicit return types.**
 - Private methods should have explicit return types when the body is non-trivial.
 - Multi-line parameter lists: one parameter per line, trailing comma. Prefer alphabetical ordering for config/DTO-like signatures (see Section 3).
-
-```scala
-def filteredNotificationsForUser(
-    byCategoryId: Map[String, List[StreamNotification]],
-    filtersMap: Map[String, List[TagFilter]],
-    followedMap: Map[String, Set[String]],
-    ignoredMap: Map[String, Set[String]],
-    userId: String,
-): List[StreamNotification] =
-```
-
-### Class Definitions
-- Constructor parameters on separate lines when more than 2 or exceeding 100 characters.
-- Use braceless syntax (`:`) for class/object/trait bodies.
-- Extend clauses on same line if they fit within 100 characters.
 
 ### Modifier Order
 `override` > access modifiers (`protected`/`private`) > `final` > `def`/`val`/`var`
@@ -327,72 +215,47 @@ def filteredNotificationsForUser(
 ## 8. Control Structures
 
 ### For Comprehensions
-Prefer for comprehensions over chained `map`/`flatMap` for 3+ operations.
+Prefer for comprehensions over chained `map`/`flatMap` for 3+ operations. Use braces (required by `-no-indent` in backend/core):
 
 ```scala
-// GOOD - clear sequential flow
-for
+for {
   user <- getUser(id)
   prefs <- getPrefs(user.id)
   streams <- fetchStreams(prefs)
-yield (user, streams)
-
-// AVOID for complex chains - harder to read
-getUser(id).flatMap(user =>
-  getPrefs(user.id).flatMap(prefs =>
-    fetchStreams(prefs).map(streams =>
-      (user, streams))))
+} yield (user, streams)
 ```
 
 ### If/Else
-Use Scala 3 `if ... then ... else` syntax:
+Use Scala 3 `if ... then ... else` syntax (required by `-new-syntax`):
 
 ```scala
 val dialect =
-  if jdbcUrl.startsWith("jdbc:postgresql") then
-    SqlDialect.Postgres
-  else
-    SqlDialect.H2
+  if jdbcUrl.startsWith("jdbc:postgresql") then SqlDialect.Postgres
+  else SqlDialect.H2
 ```
 
 ### Pattern Matching
-- Prefer `match` on its own line for multi-case expressions.
 - Exhaustive matching required (no unchecked warnings).
 
 ---
 
 ## 9. Scala 3 Features
 
-### Optional Braces
-- **Braceless syntax** for: class/object/trait bodies, enum bodies, if/else, match/case, for comprehensions.
-- **Keep braces** for: `HttpRoutes.of[IO] { ... }`, lambda blocks passed to higher-order functions, `Resource.make { ... } { ... }`.
-
 ### Enums
 Use `enum` for algebraic data types:
 ```scala
-enum SqlDialect:
+enum SqlDialect {
   case H2, Postgres
+}
 ```
 
 ### Derives
 Use `derives` for typeclass derivation, placed on the closing parenthesis line:
 ```scala
-// Wire-format model: snake_case field names match the JSON API
-case class TwitchUser(
-    display_name: String,
-    email: Option[String] = None,
-    id: String,
-    login: String,
-    profile_image_url: String,
-) derives Codec.AsObject
-
-// Internal model: standard camelCase
 case class StreamNotification(
-    categoryId: String,
-    categoryName: String,
-    streamerId: String,
-    tags: List[String] = Nil,
-    viewerCount: Int,
+  categoryId: String,
+  categoryName: String,
+  viewerCount: Int,
 ) derives Codec.AsObject
 ```
 
@@ -408,165 +271,34 @@ case class StreamNotification(
 
 ## 10. Cats-Effect Patterns
 
-This project follows the [Five Simple Rules](https://github.com/typelevel/cats-effect?tab=readme-ov-file#five-simple-rules) from the cats-effect documentation. Adhering to these rules unlocks performance, resource safety, reliable interruption, and full access to the cats-effect ecosystem.
+This project follows the [Five Simple Rules](https://github.com/typelevel/cats-effect?tab=readme-ov-file#five-simple-rules) from the cats-effect documentation.
 
-### Rule 1: Wrap All Side-Effects
-
-Every side-effecting operation must be wrapped in `IO.delay`, `IO.blocking`, `IO.interruptible`, or `IO.async`. Prefer many small `delay` blocks composed together over one large one.
-
-```scala
-// GOOD - side effect wrapped
-IO.delay(System.currentTimeMillis())
-
-// GOOD - blocking I/O marked as such
-IO.blocking(scala.io.Source.fromFile("data.csv").mkString)
-
-// BAD - bare side effect inside a map/flatMap
-ref.get.map { state =>
-  println(s"Current state: $state")  // side effect not wrapped!
-  state
-}
-
-// GOOD
-ref.get.flatMap { state =>
-  IO.println(s"Current state: $state").as(state)
-}
-```
-
-### Rule 2: Use `Resource` or `bracket` for Cleanup
-
-Anything that acquires a resource requiring cleanup must use `Resource` or `bracket`. Never rely on try/finally or manual cleanup.
-
-```scala
-// GOOD
-for
-  client <- EmberClientBuilder.default[IO].build
-  xa <- HikariTransactor.fromHikariConfig[IO](config)
-yield (client, xa)
-
-// BAD - manual cleanup, easy to leak on error
-val client = buildClient()
-try { useClient(client) }
-finally { client.close() }
-```
-
-### Rule 3: Never Hard-Block a Thread
-
-Threads must only be blocked inside `IO.blocking` or `IO.interruptible`. Never call `Thread.sleep`, `.get` on a `Future`, or any other blocking operation on the compute pool.
-
-```scala
-// GOOD - uses IO.sleep on the IO scheduler
-IO.sleep(settings.pollerInterval) *> pollOnce
-
-// BAD - blocks a compute thread
-IO.delay(Thread.sleep(5000))
-
-// GOOD - blocking JDBC wrapped properly
-IO.blocking(connection.prepareStatement(sql).execute())
-```
-
-Note: doobie already handles this for database operations via its `Transactor`, so direct JDBC wrapping is rarely needed in this project.
-
-### Rule 4: Use `IOApp`
-
-The application entry point must extend `IOApp` or `IOApp.Simple`. Never write a `def main` that calls `unsafeRunSync` or similar.
-
-```scala
-// GOOD
-object TwitchServer extends IOApp.Simple:
-  def run: IO[Unit] = ...
-
-// BAD
-object TwitchServer:
-  def main(args: Array[String]): Unit =
-    program.unsafeRunSync()
-```
-
-### Rule 5: Avoid Cats-Effect `unsafe` Runtime Escapes
-
-Never call `unsafeRunSync`, `unsafeRunAndForget`, `unsafeToFuture`, or other cats-effect runtime escape hatches. These break the guarantees that the IO runtime provides. If you find yourself reaching for one, restructure the code so the `IO` is composed into the main `run` method instead.
-
-Note: `unsafe` methods in other libraries (e.g., `Uri.unsafeFromString`) are fine when the input is known at compile time or otherwise guaranteed to be valid. This rule is specifically about bypassing the cats-effect runtime.
+1. **Wrap all side-effects** in `IO.delay`, `IO.blocking`, `IO.interruptible`, or `IO.async`.
+2. **Use `Resource` or `bracket`** for anything requiring cleanup. Never `try`/`finally`.
+3. **Never hard-block a thread.** Use `IO.sleep` not `Thread.sleep`. Use `IO.blocking` for unavoidable blocking calls. (doobie handles this for DB operations.)
+4. **Use `IOApp`** as the entry point. Never `def main` with `unsafeRunSync`.
+5. **Avoid cats-effect `unsafe` runtime escapes** (`unsafeRunSync`, `unsafeToFuture`, etc.). `Uri.unsafeFromString` and similar non-runtime methods are fine.
 
 ### Additional Patterns
-
-**State:**
-- `Ref` for mutable state, never `var`.
-- `SignallingRef` for state that needs to be observed.
-
-**Concurrency:**
-- `.parTraverseN(n)` for bounded parallelism.
-- `.parTupled` for independent parallel effects.
-- `.start` + `.join` only when you need the fiber handle.
-
-**Error Handling:**
-- `IO.raiseError` instead of throwing exceptions.
-- `.handleErrorWith` for recovery.
-- `.attempt` when you need to inspect the error.
+- `Ref` for mutable state, never `var`. `SignallingRef` for observable state.
+- `.parTraverseN(n)` for bounded parallelism. `.parTupled` for independent parallel effects.
+- `IO.raiseError` instead of throwing exceptions. `.handleErrorWith` for recovery.
 
 ---
 
 ## 11. Cats Guidelines
 
-This project follows the [Typelevel Cats guidelines](https://typelevel.org/cats/guidelines.html). While many of those guidelines target library authors, several apply directly to application code.
+This project follows the [Typelevel Cats guidelines](https://typelevel.org/cats/guidelines.html) where applicable to application code:
 
-### Partially-Applied Type Pattern
-
-When writing generic functions with multiple type parameters where only some can be inferred, use the partially-applied type pattern. Split the call into two steps so the caller provides the non-inferable types and the compiler infers the rest.
-
-```scala
-// GOOD - F is provided, A is inferred from the argument
-OptionT.pure[IO](42)
-
-// BAD - forces the caller to specify everything
-OptionT.pure[IO, Int](42)
-```
-
-### Implicit Instance Priority
-
-When defining multiple related implicit (or `given`) instances in an inheritance hierarchy, place more specific instances at higher priority. Separate them into numbered abstract classes or traits (0 = highest priority), each inheriting from the next lower priority.
-
-```scala
-// Higher priority (more specific)
-trait MyInstances0 extends MyInstances1:
-  given specificInstance: MyTypeclass[SpecificType] = ...
-
-// Lower priority (more general)
-trait MyInstances1:
-  given generalInstance[A]: MyTypeclass[A] = ...
-```
-
-### Prefer Typeclass Syntax
-
-Use the typeclass syntax extensions (`cats.syntax.all.*`) rather than calling typeclass methods directly. This keeps code concise and idiomatic.
-
-```scala
-// GOOD - syntax extension
-list.traverse(fetchItem)
-(resultA, resultB).parTupled
-
-// LESS IDIOMATIC - direct typeclass call
-Traverse[List].traverse(list)(fetchItem)
-```
-
-### Prefer `Nested` Over Transformer `Applicative`
-
-When you only need `Applicative` (not `Monad`) for a composed effect, use `Nested` rather than a monad transformer. This avoids subtle behavioral differences between `Applicative` and `Monad` composition.
-
-```scala
-// GOOD - Nested for applicative composition
-import cats.data.Nested
-Nested(IO(Option(42))).map(_ + 1).value
-
-// CAUTION - EitherT with only Applicative can behave unexpectedly
-```
+- **Partially-applied type pattern**: `OptionT.pure[IO](42)` not `OptionT.pure[IO, Int](42)`.
+- **Typeclass syntax**: Use `cats.syntax.all.*` extensions rather than calling typeclass methods directly.
+- **`Nested` over transformer `Applicative`**: When you only need `Applicative` (not `Monad`), use `Nested` rather than a monad transformer.
 
 ---
 
 ## 12. Comments
 
 - **Default to no comments.** Only add one when the WHY is non-obvious.
-- ScalaDoc (`/** ... */`) for public API.
 - No commented-out code in committed files.
 - TODO comments must reference a ticket or be resolved before merge.
 
