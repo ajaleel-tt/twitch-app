@@ -248,10 +248,10 @@ uri"https://api.twitch.tv/helix/streams"
 - Groups sorted alphabetically within each group.
 - Members within an import sorted alphabetically: `import cats.effect.{IO, Ref, Resource}`
 
-### Wildcards
-- Wildcards (`*`) are acceptable for frequently-used libraries: `cats.effect.*`, `cats.syntax.all.*`, `org.http4s.*`, `doobie.implicits.*`
-- Prefer explicit imports for less common packages.
-- `{*, given}` syntax is standard for Calico HTML imports.
+### Wildcard Imports
+Wildcard imports are allowed for library DSLs, syntax packages, and frequently-used preludes, such as `cats.syntax.all.*`, `cats.effect.*`, `org.http4s.*`, `doobie.implicits.*`, and Calico HTML imports (`{*, given}`).
+
+Prefer explicit imports for Java standard library packages, project/domain packages, and third-party packages where only one or two symbols are used. Do not churn existing files just to remove wildcards unless the imports are already being touched.
 
 ---
 
