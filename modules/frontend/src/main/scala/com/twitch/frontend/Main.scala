@@ -141,8 +141,9 @@ object Main extends IOWebApp:
                 val dynData = data.asInstanceOf[js.Dynamic]
                 val login = dynData.selectDynamic("streamerLogin")
                 if !js.isUndefined(login) then
-                  val _ =
-                    dom.window.open(s"https://twitch.tv/${login.asInstanceOf[String]}", "_blank")
+                  val streamer = login.asInstanceOf[String]
+                  val url = s"twitch://stream/$streamer"
+                  val _ = dom.window.location.assign(url)
             }
           }
 
