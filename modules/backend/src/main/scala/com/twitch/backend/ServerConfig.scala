@@ -13,9 +13,9 @@ case class ServerConfig(
   staticDir: String,
 )
 
-object ServerConfig:
+object ServerConfig {
 
-  def fromEnv: ServerConfig =
+  def fromEnv: ServerConfig = {
     val clientId = sys
       .env
       .getOrElse(
@@ -38,11 +38,12 @@ object ServerConfig:
       .getOrElse("DATABASE_URL", "jdbc:h2:./twitch_app_db;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE")
 
     val renderPattern = """^postgres(?:ql)?://([^:]+):([^@]+)@([^/]+)/(.+)$""".r
-    val (jdbcUrl, user, password) = rawDbUrl match
+    val (jdbcUrl, user, password) = rawDbUrl match {
       case renderPattern(u, p, host, db) =>
         val hostPort = if host.contains(":") then host else s"$host:5432"
         (s"jdbc:postgresql://$hostPort/$db", Some(u), Some(p))
       case _ => (rawDbUrl, None, None)
+    }
 
     val dialect =
       if jdbcUrl.startsWith("jdbc:postgresql") then SqlDialect.Postgres else SqlDialect.H2
@@ -59,3 +60,6 @@ object ServerConfig:
       redirectUri = s"$baseUrl/auth/callback",
       staticDir = sys.env.getOrElse("STATIC_DIR", "./modules/frontend"),
     )
+  }
+
+}

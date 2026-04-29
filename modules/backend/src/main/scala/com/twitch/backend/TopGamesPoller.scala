@@ -17,38 +17,41 @@ class TopGamesPoller(
   clientSecret: String,
   settings: AppSettings,
   topGamesRepo: TopGamesRepository,
-) extends TwitchPoller(clientId, clientSecret, client, appToken):
+) extends TwitchPoller(clientId, clientSecret, client, appToken) {
 
   private def fetchTopGamesPage(
     token: String,
     cursor: Option[String],
-  ): IO[TwitchSearchCategoriesResponse] =
+  ): IO[TwitchSearchCategoriesResponse] = {
     val baseUri = uri"https://api.twitch.tv/helix/games/top"
       .withQueryParam("first", "100")
     client.expect[TwitchSearchCategoriesResponse](buildAuthedRequest(baseUri, token, cursor))
+  }
 
-  private def fetchAllTopGames(token: String): IO[List[TwitchCategory]] =
+  private def fetchAllTopGames(token: String): IO[List[TwitchCategory]] = {
     val limit = settings.topGamesCount
     def go(cursor: Option[String], acc: List[TwitchCategory]): IO[List[TwitchCategory]] =
       if acc.size >= limit then IO.pure(acc.take(limit))
       else
         fetchTopGamesPage(token, cursor).flatMap { resp =>
           val nextAcc = acc ::: resp.data
-          resp.pagination.flatMap(_.cursor) match
+          resp.pagination.flatMap(_.cursor) match {
             case Some(next) if resp.data.nonEmpty && nextAcc.size < limit =>
               go(Some(next), nextAcc)
             case _ =>
               IO.pure(nextAcc.take(limit))
+          }
         }
     go(None, Nil)
+  }
 
   private def pollOnce: IO[Unit] =
-    for
+    for {
       games <- withTokenRefresh(fetchAllTopGames)
       unique = games.distinctBy(_.id)
       _ <- topGamesRepo.replaceTopGames(unique)
       _ <- IO.println(s"TopGamesPoller: stored ${unique.size} top games")
-    yield ()
+    } yield ()
 
   def start: IO[Nothing] =
     IO.println(
@@ -63,7 +66,9 @@ class TopGamesPoller(
         IO.println(s"TopGamesPoller error: $e"),
       )).foreverM
 
-object TopGamesPoller:
+}
+
+object TopGamesPoller {
 
   def make(
     client: Client[IO],
@@ -81,3 +86,5 @@ object TopGamesPoller:
       settings = settings,
       topGamesRepo = topGamesRepo,
     )
+
+}

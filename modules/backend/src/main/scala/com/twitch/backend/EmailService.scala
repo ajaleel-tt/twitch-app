@@ -13,9 +13,9 @@ class EmailService(
   client: Client[IO],
   fromEmail: String,
   fromName: String,
-) extends EmailNotifier:
+) extends EmailNotifier {
 
-  def sendWelcomeEmail(toEmail: String, displayName: String): IO[Unit] =
+  def sendWelcomeEmail(toEmail: String, displayName: String): IO[Unit] = {
     val body = Json.obj(
       "personalizations" -> Json.arr(
         Json.obj(
@@ -55,6 +55,7 @@ class EmailService(
           )
         }
     }
+  }
 
   private def welcomeHtml(displayName: String): String =
     s"""<html><body style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; color: #333;">
@@ -74,3 +75,5 @@ class EmailService(
        |</ul>
        |<p>Happy watching!</p>
        |</body></html>""".stripMargin
+
+}

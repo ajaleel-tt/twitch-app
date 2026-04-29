@@ -7,7 +7,7 @@ import doobie.implicits.*
 import com.twitch.core.TwitchCategory
 import com.twitch.backend.SqlDialect
 
-class FollowRepository(xa: Transactor[IO], dialect: SqlDialect):
+class FollowRepository(xa: Transactor[IO], dialect: SqlDialect) {
 
   def getFollowed(userId: String): IO[List[TwitchCategory]] =
     sql"SELECT category_id, name, box_art_url FROM followed_categories WHERE user_id = $userId"
@@ -15,8 +15,8 @@ class FollowRepository(xa: Transactor[IO], dialect: SqlDialect):
       .to[List]
       .transact(xa)
 
-  def follow(userId: String, category: TwitchCategory): IO[Unit] =
-    val stmt = dialect match
+  def follow(userId: String, category: TwitchCategory): IO[Unit] = {
+    val stmt = dialect match {
       case SqlDialect.Postgres =>
         sql"""
           INSERT INTO followed_categories (user_id, category_id, name, box_art_url)
@@ -29,7 +29,9 @@ class FollowRepository(xa: Transactor[IO], dialect: SqlDialect):
           KEY(user_id, category_id)
           VALUES ($userId, ${category.id}, ${category.name}, ${category.box_art_url})
         """
+    }
     stmt.update.run.transact(xa).void
+  }
 
   def unfollow(userId: String, categoryId: String): IO[Unit] =
     sql"DELETE FROM followed_categories WHERE user_id = $userId AND category_id = $categoryId"
@@ -46,9 +48,12 @@ class FollowRepository(xa: Transactor[IO], dialect: SqlDialect):
 
   def getUsersFollowingCategories(categoryIds: Set[String]): IO[Set[String]] =
     if categoryIds.isEmpty then IO.pure(Set.empty)
-    else
+    else {
       val inClause = Fragments.in(fr"category_id", categoryIds.toList.toNel.get)
       (fr"SELECT DISTINCT user_id FROM followed_categories WHERE" ++ inClause)
         .query[String]
         .to[Set]
         .transact(xa)
+    }
+
+}

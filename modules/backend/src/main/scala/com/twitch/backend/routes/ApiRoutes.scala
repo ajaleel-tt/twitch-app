@@ -45,7 +45,7 @@ class ApiRoutes(
   tagFilterRepo: TagFilterRepository,
   topGamesRepo: TopGamesRepository,
   twitchApi: TwitchApi,
-):
+) {
 
   private object SearchQueryParamMatcher extends QueryParamDecoderMatcher[String]("query")
   private object AfterQueryParamMatcher extends OptionalQueryParamDecoderMatcher[String]("after")
@@ -120,11 +120,15 @@ class ApiRoutes(
       req.as[AddTagFilterRequest].flatMap { body =>
         sessionManager.getSession(req).flatMap {
           case Some(data) =>
-            (Validation.validateTag(body.tag), Validation.validateFilterType(body.filterType)) match
+            (
+              Validation.validateTag(body.tag),
+              Validation.validateFilterType(body.filterType),
+            ) match {
               case (Right(tag), Right(ft)) =>
                 tagFilterRepo.addTagFilter(data.user.id, ft, tag) *> Ok("Filter added")
               case (Left(err), _) => BadRequest(err)
               case (_, Left(err)) => BadRequest(err)
+            }
           case None => Forbidden("Not logged in")
         }
       }
@@ -150,7 +154,7 @@ class ApiRoutes(
       req.as[AddIgnoredStreamerRequest].flatMap { body =>
         sessionManager.getSession(req).flatMap {
           case Some(data) =>
-            Validation.validateNonEmpty(body.streamerId, "streamerId") match
+            Validation.validateNonEmpty(body.streamerId, "streamerId") match {
               case Right(_) =>
                 ignoredStreamerRepo.addIgnoredStreamer(
                   data.user.id,
@@ -159,6 +163,7 @@ class ApiRoutes(
                   body.streamerName,
                 ) *> Ok("Streamer ignored")
               case Left(err) => BadRequest(err)
+            }
           case None => Forbidden("Not logged in")
         }
       }
@@ -175,12 +180,13 @@ class ApiRoutes(
       req.as[PushRegisterRequest].flatMap { body =>
         sessionManager.getSession(req).flatMap {
           case Some(data) =>
-            Validation.validatePlatform(body.platform) match
+            Validation.validatePlatform(body.platform) match {
               case Right(platform) =>
                 pushRepo.savePushSubscription(data.user.id, body.token, platform) *> Ok(
                   "Registered",
                 )
               case Left(err) => BadRequest(err)
+            }
           case None => Forbidden("Not logged in")
         }
       }
@@ -218,3 +224,5 @@ class ApiRoutes(
           }
       }
   }
+
+}

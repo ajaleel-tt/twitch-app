@@ -2,7 +2,7 @@ package com.twitch.backend
 
 import munit.FunSuite
 
-class ValidationSpec extends FunSuite:
+class ValidationSpec extends FunSuite {
 
   // ── validateTag ───────────────────────────────────────────────────
 
@@ -88,3 +88,5 @@ class ValidationSpec extends FunSuite:
   test("validateNonEmpty: whitespace-only string returns Left") {
     assert(Validation.validateNonEmpty("   ", "field").isLeft)
   }
+
+}

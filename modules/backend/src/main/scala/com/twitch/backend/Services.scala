@@ -11,17 +11,20 @@ import com.twitch.core.{
   TwitchUser,
 }
 
-trait PushService:
+trait PushService {
 
   def sendBatch(
     subscriptions: List[PushSubscriptionRow],
     notifications: List[StreamNotification],
   ): IO[Unit]
 
-trait EmailNotifier:
-  def sendWelcomeEmail(email: String, displayName: String): IO[Unit]
+}
 
-trait TwitchApi:
+trait EmailNotifier {
+  def sendWelcomeEmail(email: String, displayName: String): IO[Unit]
+}
+
+trait TwitchApi {
 
   def searchCategories(
     query: String,
@@ -40,3 +43,4 @@ trait TwitchApi:
   def getUser(accessToken: String): IO[TwitchUser]
   def exchangeCode(code: String, redirectUri: String): IO[TwitchTokenResponse]
   def refreshToken(refreshToken: String): IO[TwitchTokenResponse]
+}

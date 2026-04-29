@@ -9,12 +9,12 @@ import doobie.implicits.*
 
 import com.twitch.backend.SqlDialect
 
-class PushSubscriptionRepository(xa: Transactor[IO], dialect: SqlDialect):
+class PushSubscriptionRepository(xa: Transactor[IO], dialect: SqlDialect) {
 
-  def savePushSubscription(userId: String, deviceToken: String, platform: String): IO[Unit] =
+  def savePushSubscription(userId: String, deviceToken: String, platform: String): IO[Unit] = {
     val id = java.util.UUID.randomUUID().toString
     val now = Instant.now().getEpochSecond
-    val stmt = dialect match
+    val stmt = dialect match {
       case SqlDialect.Postgres =>
         sql"""
           INSERT INTO push_subscriptions (id, user_id, device_token, platform, created_at)
@@ -27,7 +27,9 @@ class PushSubscriptionRepository(xa: Transactor[IO], dialect: SqlDialect):
           KEY(user_id, device_token)
           VALUES ($id, $userId, $deviceToken, $platform, $now)
         """
+    }
     stmt.update.run.transact(xa).void
+  }
 
   def deletePushSubscription(deviceToken: String): IO[Unit] =
     sql"DELETE FROM push_subscriptions WHERE device_token = $deviceToken"
@@ -38,12 +40,15 @@ class PushSubscriptionRepository(xa: Transactor[IO], dialect: SqlDialect):
 
   def getPushSubscriptionsForUsers(userIds: Set[String]): IO[List[PushSubscriptionRow]] =
     if userIds.isEmpty then IO.pure(Nil)
-    else
+    else {
       val inClause = Fragments.in(fr"user_id", userIds.toList.toNel.get)
       (fr"SELECT id, user_id, device_token, platform, created_at FROM push_subscriptions WHERE" ++ inClause)
         .query[PushSubscriptionRow]
         .to[List]
         .transact(xa)
+    }
+
+}
 
 case class PushSubscriptionRow(
   id: String,
