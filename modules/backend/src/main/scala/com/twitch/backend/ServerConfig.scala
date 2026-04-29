@@ -1,16 +1,16 @@
 package com.twitch.backend
 
 case class ServerConfig(
+  baseUrl: String,
   clientId: String,
   clientSecret: String,
-  baseUrl: String,
-  redirectUri: String,
+  dbPassword: Option[String],
   dbUrl: String,
   dbUser: Option[String],
-  dbPassword: Option[String],
-  port: Int,
-  staticDir: String,
   dialect: SqlDialect,
+  port: Int,
+  redirectUri: String,
+  staticDir: String,
 )
 
 object ServerConfig:
@@ -48,14 +48,14 @@ object ServerConfig:
       if jdbcUrl.startsWith("jdbc:postgresql") then SqlDialect.Postgres else SqlDialect.H2
 
     ServerConfig(
+      baseUrl = baseUrl,
       clientId = clientId,
       clientSecret = clientSecret,
-      baseUrl = baseUrl,
-      redirectUri = s"$baseUrl/auth/callback",
+      dbPassword = password.orElse(sys.env.get("DATABASE_PASS")),
       dbUrl = jdbcUrl,
       dbUser = user.orElse(sys.env.get("DATABASE_USER")),
-      dbPassword = password.orElse(sys.env.get("DATABASE_PASS")),
-      port = sys.env.getOrElse("PORT", "8080").toInt,
-      staticDir = sys.env.getOrElse("STATIC_DIR", "./modules/frontend"),
       dialect = dialect,
+      port = sys.env.getOrElse("PORT", "8080").toInt,
+      redirectUri = s"$baseUrl/auth/callback",
+      staticDir = sys.env.getOrElse("STATIC_DIR", "./modules/frontend"),
     )

@@ -39,8 +39,8 @@ object AppWiring:
       .get("SENDGRID_API_KEY")
       .map(key =>
         new EmailService(
-          client = client,
           apiKey = key,
+          client = client,
           fromEmail = settings.emailFrom,
           fromName = settings.emailFromName,
         ),
@@ -63,10 +63,10 @@ object AppWiring:
             yield Some(
               new PushNotificationService(
                 client = client,
-                projectId = key.projectId,
-                serviceAccountKey = key,
                 parallelSends = settings.pushParallelSends,
+                projectId = key.projectId,
                 pushRepo = pushRepo,
+                serviceAccountKey = key,
                 tokenCache = tokenCache,
                 tokenMutex = tokenMutex,
               ),
@@ -86,32 +86,32 @@ object AppWiring:
       notificationQueues <- IO.ref(Map.empty[String, (String, Queue[IO, StreamNotification])])
       pushService        <- pushServiceIO
       twitchApi = new TwitchApiClient(
+        client = client,
         clientId = config.clientId,
         clientSecret = config.clientSecret,
-        client = client,
       )
       sessionManager = new auth.SessionManager(sessionRepo, twitchApi)
       authRoutes     = new routes.AuthRoutes(
         clientId = config.clientId,
-        redirectUri = config.redirectUri,
-        twitchApi = twitchApi,
-        pendingOAuthStates = pendingOAuthStates,
-        userRepo = userRepo,
-        sessionRepo = sessionRepo,
         emailService = emailService,
+        pendingOAuthStates = pendingOAuthStates,
+        redirectUri = config.redirectUri,
+        sessionRepo = sessionRepo,
+        twitchApi = twitchApi,
+        userRepo = userRepo,
       )
       apiRoutes = new routes.ApiRoutes(
         clientId = config.clientId,
-        sessionManager = sessionManager,
-        twitchApi = twitchApi,
         followRepo = followRepo,
-        tagFilterRepo = tagFilterRepo,
         ignoredStreamerRepo = ignoredStreamerRepo,
-        sessionRepo = sessionRepo,
-        pushRepo = pushRepo,
-        topGamesRepo = topGamesRepo,
         notificationQueues = notificationQueues,
+        pushRepo = pushRepo,
+        sessionManager = sessionManager,
+        sessionRepo = sessionRepo,
         settings = settings,
+        tagFilterRepo = tagFilterRepo,
+        topGamesRepo = topGamesRepo,
+        twitchApi = twitchApi,
       )
       frontendService = fileService[IO](FileService.Config(config.staticDir))
       httpApp         = Router(
@@ -127,22 +127,22 @@ object AppWiring:
       ).orNotFound
       corsApp = CORS.policy.withAllowOriginAll(httpApp)
       poller <- StreamPoller.make(
+        client = client,
         clientId = config.clientId,
         clientSecret = config.clientSecret,
-        client = client,
         followRepo = followRepo,
-        tagFilterRepo = tagFilterRepo,
         ignoredStreamerRepo = ignoredStreamerRepo,
-        pushRepo = pushRepo,
         notificationQueues = notificationQueues,
-        settings = settings,
+        pushRepo = pushRepo,
         pushService = pushService,
+        settings = settings,
+        tagFilterRepo = tagFilterRepo,
       )
       topGamesPoller <- TopGamesPoller.make(
+        client = client,
         clientId = config.clientId,
         clientSecret = config.clientSecret,
-        client = client,
-        topGamesRepo = topGamesRepo,
         settings = settings,
+        topGamesRepo = topGamesRepo,
       )
     yield App(corsApp, poller, topGamesPoller)

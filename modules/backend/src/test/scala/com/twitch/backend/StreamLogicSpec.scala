@@ -46,15 +46,15 @@ class StreamLogicSpec extends FunSuite:
     tags: List[String] = Nil,
   ): StreamNotification =
     StreamNotification(
-      categoryId,
-      "Some Game",
-      "user1",
-      "streamer1",
-      "Streamer One",
-      "Playing games",
-      100,
-      "thumb.jpg",
-      tags,
+      categoryId = categoryId,
+      categoryName = "Some Game",
+      streamerId = "user1",
+      streamerLogin = "streamer1",
+      streamerName = "Streamer One",
+      streamTitle = "Playing games",
+      tags = tags,
+      thumbnailUrl = "thumb.jpg",
+      viewerCount = 100,
     )
 
   // ── toNotification ─────────────────────────────────────────────────
@@ -262,14 +262,14 @@ class StreamLogicSpec extends FunSuite:
     categoryId: String = "game1",
   ): StreamNotification =
     StreamNotification(
-      categoryId,
-      "Some Game",
-      streamerId,
-      streamerLogin,
-      streamerName,
-      "Playing games",
-      100,
-      "thumb.jpg",
+      categoryId = categoryId,
+      categoryName = "Some Game",
+      streamerId = streamerId,
+      streamerLogin = streamerLogin,
+      streamerName = streamerName,
+      streamTitle = "Playing games",
+      thumbnailUrl = "thumb.jpg",
+      viewerCount = 100,
     )
 
   test("applyIgnoredStreamers: empty ignored set passes all notifications") {
@@ -363,8 +363,26 @@ class StreamLogicSpec extends FunSuite:
   }
 
   test("filteredNotificationsForUser: applies ignored streamers") {
-    val n1 = StreamNotification("game1", "G1", "u1", "login1", "Name1", "Title", 100, "thumb.jpg")
-    val n2 = StreamNotification("game1", "G1", "u2", "login2", "Name2", "Title", 200, "thumb.jpg")
+    val n1 = StreamNotification(
+      categoryId = "game1",
+      categoryName = "G1",
+      streamerId = "u1",
+      streamerLogin = "login1",
+      streamerName = "Name1",
+      streamTitle = "Title",
+      thumbnailUrl = "thumb.jpg",
+      viewerCount = 100,
+    )
+    val n2 = StreamNotification(
+      categoryId = "game1",
+      categoryName = "G1",
+      streamerId = "u2",
+      streamerLogin = "login2",
+      streamerName = "Name2",
+      streamTitle = "Title",
+      thumbnailUrl = "thumb.jpg",
+      viewerCount = 200,
+    )
     val byCategory  = Map("game1" -> List(n1, n2))
     val followedMap = Map("alice" -> Set("game1"))
     val ignoredMap  = Map("alice" -> Set("u1"))
@@ -381,9 +399,39 @@ class StreamLogicSpec extends FunSuite:
   test(
     "filteredNotificationsForUser: applies category filter, tag filter, and ignored streamer together",
   ) {
-    val n1 = StreamNotification("game1", "G1", "u1", "l1", "N1", "T", 100, "t.jpg", List("English"))
-    val n2 = StreamNotification("game1", "G1", "u2", "l2", "N2", "T", 200, "t.jpg", List("English"))
-    val n3 = StreamNotification("game2", "G2", "u3", "l3", "N3", "T", 300, "t.jpg", List("Spanish"))
+    val n1 = StreamNotification(
+      categoryId = "game1",
+      categoryName = "G1",
+      streamerId = "u1",
+      streamerLogin = "l1",
+      streamerName = "N1",
+      streamTitle = "T",
+      tags = List("English"),
+      thumbnailUrl = "t.jpg",
+      viewerCount = 100,
+    )
+    val n2 = StreamNotification(
+      categoryId = "game1",
+      categoryName = "G1",
+      streamerId = "u2",
+      streamerLogin = "l2",
+      streamerName = "N2",
+      streamTitle = "T",
+      tags = List("English"),
+      thumbnailUrl = "t.jpg",
+      viewerCount = 200,
+    )
+    val n3 = StreamNotification(
+      categoryId = "game2",
+      categoryName = "G2",
+      streamerId = "u3",
+      streamerLogin = "l3",
+      streamerName = "N3",
+      streamTitle = "T",
+      tags = List("Spanish"),
+      thumbnailUrl = "t.jpg",
+      viewerCount = 300,
+    )
     val byCategory  = Map("game1" -> List(n1, n2), "game2" -> List(n3))
     val followedMap = Map("alice" -> Set("game1", "game2"))
     val filtersMap  = Map("alice" -> List(TagFilter("include", "english")))

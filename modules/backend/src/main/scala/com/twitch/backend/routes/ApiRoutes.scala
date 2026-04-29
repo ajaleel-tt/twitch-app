@@ -35,16 +35,16 @@ import com.twitch.core.{
 
 class ApiRoutes(
   clientId: String,
-  sessionManager: SessionManager,
-  twitchApi: TwitchApi,
   followRepo: FollowRepository,
-  tagFilterRepo: TagFilterRepository,
   ignoredStreamerRepo: IgnoredStreamerRepository,
-  sessionRepo: SessionRepository,
-  pushRepo: PushSubscriptionRepository,
-  topGamesRepo: TopGamesRepository,
   notificationQueues: Ref[IO, Map[String, (String, Queue[IO, StreamNotification])]],
+  pushRepo: PushSubscriptionRepository,
+  sessionManager: SessionManager,
+  sessionRepo: SessionRepository,
   settings: AppSettings,
+  tagFilterRepo: TagFilterRepository,
+  topGamesRepo: TopGamesRepository,
+  twitchApi: TwitchApi,
 ):
 
   private object SearchQueryParamMatcher extends QueryParamDecoderMatcher[String]("query")

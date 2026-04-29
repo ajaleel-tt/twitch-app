@@ -85,9 +85,9 @@ case class StreamNotification(
   streamerLogin: String,
   streamerName: String,
   streamTitle: String,
-  viewerCount: Int,
-  thumbnailUrl: String,
   tags: List[String] = Nil,
+  thumbnailUrl: String,
+  viewerCount: Int,
 ) derives Codec.AsObject
 
 case class TagFilter(

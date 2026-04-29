@@ -16,9 +16,9 @@ object StreamLogic:
       streamerLogin = s.user_login,
       streamerName = s.user_name,
       streamTitle = s.title,
-      viewerCount = s.viewer_count,
-      thumbnailUrl = s.thumbnail_url.replace("{width}", "320").replace("{height}", "180"),
       tags = s.tags.getOrElse(Nil),
+      thumbnailUrl = s.thumbnail_url.replace("{width}", "320").replace("{height}", "180"),
+      viewerCount = s.viewer_count,
     )
 
   def recentlyWentLive(s: TwitchStream, now: Instant, window: FiniteDuration): Boolean =
