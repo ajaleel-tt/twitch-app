@@ -1,15 +1,16 @@
 package com.twitch.backend
 
 import cats.effect.*
+import cats.effect.std.Queue
+import doobie.Transactor
 import org.http4s.*
-import org.http4s.dsl.io.*
 import org.http4s.client.Client
+import org.http4s.dsl.io.*
 import org.http4s.server.Router
 import org.http4s.server.middleware.CORS
 import org.http4s.server.staticcontent.*
-import cats.effect.std.Queue
+
 import com.twitch.core.StreamNotification
-import doobie.Transactor
 
 case class App(
   corsApp: HttpApp[IO],
@@ -36,7 +37,14 @@ object AppWiring:
     val emailService = sys
       .env
       .get("SENDGRID_API_KEY")
-      .map(key => new EmailService(client, key, settings.emailFrom, settings.emailFromName))
+      .map(key =>
+        new EmailService(
+          client = client,
+          apiKey = key,
+          fromEmail = settings.emailFrom,
+          fromName = settings.emailFromName,
+        ),
+      )
 
     val pushServiceIO: IO[Option[PushNotificationService]] =
       val keyIO = sys.env.get("FCM_SERVICE_ACCOUNT_JSON") match
@@ -54,13 +62,13 @@ object AppWiring:
               _          <- IO.println("Push notifications enabled")
             yield Some(
               new PushNotificationService(
-                client,
-                key.projectId,
-                key,
-                settings.pushParallelSends,
-                pushRepo,
-                tokenCache,
-                tokenMutex,
+                client = client,
+                projectId = key.projectId,
+                serviceAccountKey = key,
+                parallelSends = settings.pushParallelSends,
+                pushRepo = pushRepo,
+                tokenCache = tokenCache,
+                tokenMutex = tokenMutex,
               ),
             )
           case None =>
@@ -77,29 +85,33 @@ object AppWiring:
       pendingOAuthStates <- IO.ref(Set.empty[String])
       notificationQueues <- IO.ref(Map.empty[String, (String, Queue[IO, StreamNotification])])
       pushService        <- pushServiceIO
-      twitchApi      = new TwitchApiClient(config.clientId, config.clientSecret, client)
+      twitchApi = new TwitchApiClient(
+        clientId = config.clientId,
+        clientSecret = config.clientSecret,
+        client = client,
+      )
       sessionManager = new auth.SessionManager(sessionRepo, twitchApi)
       authRoutes     = new routes.AuthRoutes(
-        config.clientId,
-        config.redirectUri,
-        twitchApi,
-        pendingOAuthStates,
-        userRepo,
-        sessionRepo,
-        emailService,
+        clientId = config.clientId,
+        redirectUri = config.redirectUri,
+        twitchApi = twitchApi,
+        pendingOAuthStates = pendingOAuthStates,
+        userRepo = userRepo,
+        sessionRepo = sessionRepo,
+        emailService = emailService,
       )
       apiRoutes = new routes.ApiRoutes(
-        config.clientId,
-        sessionManager,
-        twitchApi,
-        followRepo,
-        tagFilterRepo,
-        ignoredStreamerRepo,
-        sessionRepo,
-        pushRepo,
-        topGamesRepo,
-        notificationQueues,
-        settings,
+        clientId = config.clientId,
+        sessionManager = sessionManager,
+        twitchApi = twitchApi,
+        followRepo = followRepo,
+        tagFilterRepo = tagFilterRepo,
+        ignoredStreamerRepo = ignoredStreamerRepo,
+        sessionRepo = sessionRepo,
+        pushRepo = pushRepo,
+        topGamesRepo = topGamesRepo,
+        notificationQueues = notificationQueues,
+        settings = settings,
       )
       frontendService = fileService[IO](FileService.Config(config.staticDir))
       httpApp         = Router(
@@ -115,22 +127,22 @@ object AppWiring:
       ).orNotFound
       corsApp = CORS.policy.withAllowOriginAll(httpApp)
       poller <- StreamPoller.make(
-        config.clientId,
-        config.clientSecret,
-        client,
-        followRepo,
-        tagFilterRepo,
-        ignoredStreamerRepo,
-        pushRepo,
-        notificationQueues,
-        settings,
-        pushService,
+        clientId = config.clientId,
+        clientSecret = config.clientSecret,
+        client = client,
+        followRepo = followRepo,
+        tagFilterRepo = tagFilterRepo,
+        ignoredStreamerRepo = ignoredStreamerRepo,
+        pushRepo = pushRepo,
+        notificationQueues = notificationQueues,
+        settings = settings,
+        pushService = pushService,
       )
       topGamesPoller <- TopGamesPoller.make(
-        config.clientId,
-        config.clientSecret,
-        client,
-        topGamesRepo,
-        settings,
+        clientId = config.clientId,
+        clientSecret = config.clientSecret,
+        client = client,
+        topGamesRepo = topGamesRepo,
+        settings = settings,
       )
     yield App(corsApp, poller, topGamesPoller)

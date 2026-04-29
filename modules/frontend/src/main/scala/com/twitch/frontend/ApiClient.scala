@@ -1,15 +1,17 @@
 package com.twitch.frontend
 
+import scala.concurrent.duration.*
+
 import cats.effect.*
 import fs2.Stream
-import scala.concurrent.duration.*
 import io.circe.parser.decode
 import io.circe.syntax.*
-import org.http4s.dom.FetchClientBuilder
 import org.http4s.{MediaType, Method, Request as Http4sRequest, Uri}
+import org.http4s.dom.FetchClientBuilder
 import org.http4s.headers.`Content-Type`
 import org.scalajs.dom
 import org.scalajs.dom.RequestCredentials
+
 import com.twitch.core.*
 
 object ApiClient:

@@ -89,6 +89,16 @@ object Schema:
       sql"CREATE INDEX IF NOT EXISTS idx_followed_category_user ON followed_categories (category_id, user_id)"
         .update
         .run
-    (createFollowed *> createTagFilters *> createIgnoredStreamers *> createSessions *> createUsers *> migrateUsersAddLogin *> migrateUsersAddDisplayName *> createPushSubscriptions *> createPushUniqueIndex *> createTopGames *> createFollowedCategoryIndex)
+    (createFollowed *>
+      createTagFilters *>
+      createIgnoredStreamers *>
+      createSessions *>
+      createUsers *>
+      migrateUsersAddLogin *>
+      migrateUsersAddDisplayName *>
+      createPushSubscriptions *>
+      createPushUniqueIndex *>
+      createTopGames *>
+      createFollowedCategoryIndex)
       .transact(xa)
       .void

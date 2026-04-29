@@ -1,7 +1,8 @@
 package com.twitch.backend
 
-import com.typesafe.config.ConfigFactory
 import scala.concurrent.duration.*
+
+import com.typesafe.config.ConfigFactory
 
 case class AppSettings(
   pollerInterval: FiniteDuration,

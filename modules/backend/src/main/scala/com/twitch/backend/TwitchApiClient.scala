@@ -4,10 +4,17 @@ import cats.effect.IO
 import org.http4s.*
 import org.http4s.circe.CirceEntityDecoder.*
 import org.http4s.client.Client
-import org.http4s.implicits.*
 import org.http4s.headers.Authorization
+import org.http4s.implicits.*
 import org.typelevel.ci.*
-import com.twitch.core.*
+
+import com.twitch.core.{
+  TwitchSearchCategoriesResponse,
+  TwitchSearchChannelsResponse,
+  TwitchTokenResponse,
+  TwitchUser,
+  TwitchUsersResponse,
+}
 
 class TwitchApiClient(
   clientId: String,

@@ -1,16 +1,18 @@
 package com.twitch.backend.routes
 
+import java.time.Instant
+import java.util.UUID
+
 import cats.effect.*
 import org.http4s.*
-import org.http4s.dsl.io.*
-import org.http4s.implicits.*
-import org.http4s.headers.Location
 import org.http4s.SameSite
-import java.util.UUID
-import java.time.Instant
-import com.twitch.core.*
+import org.http4s.dsl.io.*
+import org.http4s.headers.Location
+import org.http4s.implicits.*
+
 import com.twitch.backend.{EmailNotifier, TwitchApi}
 import com.twitch.backend.db.{SessionRepository, UserRepository}
+import com.twitch.core.TwitchUser
 
 class AuthRoutes(
   clientId: String,

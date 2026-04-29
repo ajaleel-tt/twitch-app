@@ -1,16 +1,23 @@
 package com.twitch.backend
 
+import java.time.Instant
+
 import cats.effect.*
+import cats.effect.implicits.*
 import cats.effect.std.Queue
 import cats.syntax.all.*
-import cats.effect.implicits.*
 import org.http4s.*
-import org.http4s.client.Client
 import org.http4s.circe.CirceEntityDecoder.*
+import org.http4s.client.Client
 import org.http4s.implicits.*
-import java.time.Instant
-import com.twitch.core.*
-import com.twitch.backend.db.*
+
+import com.twitch.backend.db.{
+  FollowRepository,
+  IgnoredStreamerRepository,
+  PushSubscriptionRepository,
+  TagFilterRepository,
+}
+import com.twitch.core.{StreamNotification, TwitchStream, TwitchStreamsResponse}
 
 class StreamPoller(
   clientId: String,
@@ -202,16 +209,16 @@ object StreamPoller:
       tokenRef    <- IO.ref(Option.empty[String])
       notifiedRef <- IO.ref(Set.empty[String])
     yield new StreamPoller(
-      clientId,
-      clientSecret,
-      client,
-      followRepo,
-      tagFilterRepo,
-      ignoredStreamerRepo,
-      pushRepo,
-      notificationQueues,
-      tokenRef,
-      notifiedRef,
-      settings,
-      pushService,
+      clientId = clientId,
+      clientSecret = clientSecret,
+      client = client,
+      followRepo = followRepo,
+      tagFilterRepo = tagFilterRepo,
+      ignoredStreamerRepo = ignoredStreamerRepo,
+      pushRepo = pushRepo,
+      notificationQueues = notificationQueues,
+      appToken = tokenRef,
+      notifiedStreamIds = notifiedRef,
+      settings = settings,
+      pushService = pushService,
     )

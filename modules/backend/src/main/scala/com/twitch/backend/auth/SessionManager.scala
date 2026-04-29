@@ -1,11 +1,13 @@
 package com.twitch.backend.auth
 
+import java.time.Instant
+
 import cats.effect.*
 import org.http4s.*
-import java.time.Instant
-import com.twitch.core.*
+
 import com.twitch.backend.TwitchApi
 import com.twitch.backend.db.SessionRepository
+import com.twitch.core.TwitchUser
 
 case class SessionData(
   user: TwitchUser,
