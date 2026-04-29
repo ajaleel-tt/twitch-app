@@ -77,7 +77,7 @@ object TagFiltersSection:
         cls := "flex gap-2",
         input.withSelf { self =>
           (
-            typ         := "text",
+            typ := "text",
             placeholder := placeholderText,
             cls := "bg-twitch-dark border border-gray-700 text-white placeholder-gray-500 rounded-lg px-3 py-1.5 text-sm w-48 focus:outline-none focus:ring-2 focus:ring-twitch-purple focus:border-transparent transition-all",
             value <-- state.map(getInputValue),

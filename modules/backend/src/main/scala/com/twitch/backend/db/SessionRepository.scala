@@ -17,7 +17,7 @@ class SessionRepository(xa: Transactor[IO]):
     refreshToken: Option[String],
     tokenExpiresAt: Option[Instant],
   ): IO[Unit] =
-    val now       = Instant.now().getEpochSecond
+    val now = Instant.now().getEpochSecond
     val expiresAt = tokenExpiresAt.map(_.getEpochSecond)
     sql"""
       INSERT INTO sessions (session_id, user_id, user_login, display_name, profile_image_url, access_token, refresh_token, token_expires_at, created_at)

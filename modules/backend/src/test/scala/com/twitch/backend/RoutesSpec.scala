@@ -84,19 +84,19 @@ class RoutesSpec extends CatsEffectSuite:
         ec,
       )
       _ <- Resource.eval(db.Schema.initDb(xa, SqlDialect.H2))
-      followRepo          = new db.FollowRepository(xa, SqlDialect.H2)
-      tagFilterRepo       = new db.TagFilterRepository(xa, SqlDialect.H2)
+      followRepo = new db.FollowRepository(xa, SqlDialect.H2)
+      tagFilterRepo = new db.TagFilterRepository(xa, SqlDialect.H2)
       ignoredStreamerRepo = new db.IgnoredStreamerRepository(xa, SqlDialect.H2)
-      userRepo            = new db.UserRepository(xa)
-      sessionRepo         = new db.SessionRepository(xa)
-      pushRepo            = new db.PushSubscriptionRepository(xa, SqlDialect.H2)
-      topGamesRepo        = new db.TopGamesRepository(xa)
+      userRepo = new db.UserRepository(xa)
+      sessionRepo = new db.SessionRepository(xa)
+      pushRepo = new db.PushSubscriptionRepository(xa, SqlDialect.H2)
+      topGamesRepo = new db.TopGamesRepository(xa)
       pendingStates <- Resource.eval(IO.ref(Set.empty[String]))
-      notifQueues   <- Resource.eval(
+      notifQueues <- Resource.eval(
         IO.ref(Map.empty[String, (String, Queue[IO, StreamNotification])]),
       )
       sessionManager = new auth.SessionManager(sessionRepo, stubTwitchApi)
-      authRoutes     = new routes.AuthRoutes(
+      authRoutes = new routes.AuthRoutes(
         clientId = "test-client-id",
         redirectUri = "http://localhost:8080/auth/callback",
         twitchApi = stubTwitchApi,
@@ -126,7 +126,7 @@ class RoutesSpec extends CatsEffectSuite:
   private def env = envFixture()
 
   private def authApp = env.authRoutes.routes.orNotFound
-  private def apiApp  = env.apiRoutes.routes.orNotFound
+  private def apiApp = env.apiRoutes.routes.orNotFound
 
   // Helper: create a session and return the cookie value
   private def createSession: IO[String] =
@@ -186,7 +186,7 @@ class RoutesSpec extends CatsEffectSuite:
 
   test("GET /user returns user when logged in") {
     for
-      sid  <- createSession
+      sid <- createSession
       resp <- apiApp.run(withSession(Request[IO](Method.GET, uri"/user"), sid))
       user <- resp.as[TwitchUser]
     yield {
@@ -198,7 +198,7 @@ class RoutesSpec extends CatsEffectSuite:
 
   test("GET /config returns client ID without session") {
     for
-      resp   <- apiApp.run(Request[IO](Method.GET, uri"/config"))
+      resp <- apiApp.run(Request[IO](Method.GET, uri"/config"))
       config <- resp.as[AppConfig]
     yield {
       assertEquals(resp.status, Status.Ok)
@@ -210,7 +210,7 @@ class RoutesSpec extends CatsEffectSuite:
 
   test("GET /auth/login redirects with state parameter") {
     for
-      resp          <- authApp.run(Request[IO](Method.GET, uri"/auth/login"))
+      resp <- authApp.run(Request[IO](Method.GET, uri"/auth/login"))
       pendingStates <- env.pendingOAuthStates.get
     yield {
       assertEquals(resp.status, Status.Found)
@@ -234,7 +234,7 @@ class RoutesSpec extends CatsEffectSuite:
   test("GET /auth/callback with valid state creates session and redirects") {
     for
       // First, do a login to register a state
-      loginResp     <- authApp.run(Request[IO](Method.GET, uri"/auth/login"))
+      loginResp <- authApp.run(Request[IO](Method.GET, uri"/auth/login"))
       pendingStates <- env.pendingOAuthStates.get
       state = pendingStates.head
       callbackResp <- authApp.run(
@@ -256,7 +256,7 @@ class RoutesSpec extends CatsEffectSuite:
 
   test("POST /follow persists category, GET /followed returns it") {
     for
-      sid        <- createSession
+      sid <- createSession
       followResp <- apiApp.run(
         withSession(
           Request[IO](Method.POST, uri"/follow").withEntity(FollowRequest(testCategory)),
@@ -264,7 +264,7 @@ class RoutesSpec extends CatsEffectSuite:
         ),
       )
       followedResp <- apiApp.run(withSession(Request[IO](Method.GET, uri"/followed"), sid))
-      body         <- followedResp.as[FollowedCategoriesResponse]
+      body <- followedResp.as[FollowedCategoriesResponse]
     yield {
       assertEquals(followResp.status, Status.Ok)
       assertEquals(followedResp.status, Status.Ok)
@@ -276,14 +276,14 @@ class RoutesSpec extends CatsEffectSuite:
     val cat = TwitchCategory("cat_unfollow", "Unfollow Me", "https://img.test/art.jpg")
     for
       sid <- createSession
-      _   <- apiApp.run(
+      _ <- apiApp.run(
         withSession(Request[IO](Method.POST, uri"/follow").withEntity(FollowRequest(cat)), sid),
       )
       unfollowResp <- apiApp.run(
         withSession(Request[IO](Method.POST, uri"/unfollow/cat_unfollow"), sid),
       )
       followedResp <- apiApp.run(withSession(Request[IO](Method.GET, uri"/followed"), sid))
-      body         <- followedResp.as[FollowedCategoriesResponse]
+      body <- followedResp.as[FollowedCategoriesResponse]
     yield {
       assertEquals(unfollowResp.status, Status.Ok)
       assert(!body.categories.exists(_.id == "cat_unfollow"), "Expected category to be unfollowed")
@@ -294,7 +294,7 @@ class RoutesSpec extends CatsEffectSuite:
 
   test("POST /tag-filters/add persists filter, GET /tag-filters returns it") {
     for
-      sid     <- createSession
+      sid <- createSession
       addResp <- apiApp.run(
         withSession(
           Request[IO](Method.POST, uri"/tag-filters/add")
@@ -303,7 +303,7 @@ class RoutesSpec extends CatsEffectSuite:
         ),
       )
       filtersResp <- apiApp.run(withSession(Request[IO](Method.GET, uri"/tag-filters"), sid))
-      body        <- filtersResp.as[TagFiltersResponse]
+      body <- filtersResp.as[TagFiltersResponse]
     yield {
       assertEquals(addResp.status, Status.Ok)
       assertEquals(filtersResp.status, Status.Ok)
@@ -314,7 +314,7 @@ class RoutesSpec extends CatsEffectSuite:
   test("POST /tag-filters/remove deletes filter") {
     for
       sid <- createSession
-      _   <- apiApp.run(
+      _ <- apiApp.run(
         withSession(
           Request[IO](Method.POST, uri"/tag-filters/add")
             .withEntity(AddTagFilterRequest("exclude", "removeme")),
@@ -329,7 +329,7 @@ class RoutesSpec extends CatsEffectSuite:
         ),
       )
       filtersResp <- apiApp.run(withSession(Request[IO](Method.GET, uri"/tag-filters"), sid))
-      body        <- filtersResp.as[TagFiltersResponse]
+      body <- filtersResp.as[TagFiltersResponse]
     yield {
       assertEquals(removeResp.status, Status.Ok)
       assert(!body.filters.exists(_.tag == "removeme"))
@@ -340,7 +340,7 @@ class RoutesSpec extends CatsEffectSuite:
 
   test("POST /tag-filters/add rejects empty tag") {
     for
-      sid  <- createSession
+      sid <- createSession
       resp <- apiApp.run(
         withSession(
           Request[IO](Method.POST, uri"/tag-filters/add")
@@ -353,7 +353,7 @@ class RoutesSpec extends CatsEffectSuite:
 
   test("POST /tag-filters/add rejects tag longer than 25 characters") {
     for
-      sid  <- createSession
+      sid <- createSession
       resp <- apiApp.run(
         withSession(
           Request[IO](Method.POST, uri"/tag-filters/add")
@@ -366,7 +366,7 @@ class RoutesSpec extends CatsEffectSuite:
 
   test("POST /tag-filters/add rejects invalid filterType") {
     for
-      sid  <- createSession
+      sid <- createSession
       resp <- apiApp.run(
         withSession(
           Request[IO](Method.POST, uri"/tag-filters/add")
@@ -381,7 +381,7 @@ class RoutesSpec extends CatsEffectSuite:
 
   test("GET /search/categories returns results when logged in") {
     for
-      sid  <- createSession
+      sid <- createSession
       resp <- apiApp.run(
         withSession(Request[IO](Method.GET, uri"/search/categories?query=test"), sid),
       )
@@ -404,7 +404,7 @@ class RoutesSpec extends CatsEffectSuite:
       resp <- apiApp.run(
         withSession(Request[IO](Method.GET, uri"/search/categories?query=test"), sid),
       )
-      body    <- resp.as[TwitchSearchCategoriesResponse]
+      body <- resp.as[TwitchSearchCategoriesResponse]
       session <- env.sessionRepo.getSession(sid)
     yield {
       assertEquals(resp.status, Status.Ok)
@@ -421,9 +421,9 @@ class RoutesSpec extends CatsEffectSuite:
 
   test("POST /logout clears session") {
     for
-      sid        <- createSession
+      sid <- createSession
       logoutResp <- apiApp.run(withSession(Request[IO](Method.POST, uri"/logout"), sid))
-      userResp   <- apiApp.run(withSession(Request[IO](Method.GET, uri"/user"), sid))
+      userResp <- apiApp.run(withSession(Request[IO](Method.GET, uri"/user"), sid))
     yield {
       assertEquals(logoutResp.status, Status.Ok)
       val removedCookie = logoutResp.cookies.find(_.name == "session_id")
@@ -439,7 +439,7 @@ class RoutesSpec extends CatsEffectSuite:
       sid <- createSession
       // We need to use the raw routes (not orNotFound) to get the response
       // The SSE endpoint returns a streaming body, so we just check it starts OK
-      resp   <- apiApp.run(withSession(Request[IO](Method.GET, uri"/notifications/stream"), sid))
+      resp <- apiApp.run(withSession(Request[IO](Method.GET, uri"/notifications/stream"), sid))
       queues <- env.notificationQueues.get
     yield {
       assertEquals(resp.status, Status.Ok)
@@ -451,10 +451,10 @@ class RoutesSpec extends CatsEffectSuite:
 
   test("SSE queue receives offered notification") {
     for
-      sid    <- createSession
-      resp   <- apiApp.run(withSession(Request[IO](Method.GET, uri"/notifications/stream"), sid))
+      sid <- createSession
+      resp <- apiApp.run(withSession(Request[IO](Method.GET, uri"/notifications/stream"), sid))
       queues <- env.notificationQueues.get
-      (_, queue)   = queues(sid)
+      (_, queue) = queues(sid)
       notification = StreamNotification(
         categoryId = "cat1",
         categoryName = "Test Game",
@@ -488,8 +488,8 @@ class RoutesSpec extends CatsEffectSuite:
       TwitchCategory("game2", "Popular Game 2", "https://img.test/g2.jpg"),
     )
     for
-      sid  <- createSession
-      _    <- env.topGamesRepo.replaceTopGames(games)
+      sid <- createSession
+      _ <- env.topGamesRepo.replaceTopGames(games)
       resp <- apiApp.run(withSession(Request[IO](Method.GET, uri"/top-game-ids"), sid))
       body <- resp.as[TopGameIdsResponse]
     yield {
@@ -500,8 +500,8 @@ class RoutesSpec extends CatsEffectSuite:
 
   test("GET /top-game-ids returns empty set when no top games stored") {
     for
-      sid  <- createSession
-      _    <- env.topGamesRepo.replaceTopGames(Nil)
+      sid <- createSession
+      _ <- env.topGamesRepo.replaceTopGames(Nil)
       resp <- apiApp.run(withSession(Request[IO](Method.GET, uri"/top-game-ids"), sid))
       body <- resp.as[TopGameIdsResponse]
     yield {
@@ -511,11 +511,11 @@ class RoutesSpec extends CatsEffectSuite:
   }
 
   test("replaceTopGames overwrites previous data") {
-    val first  = List(TwitchCategory("old1", "Old Game", "https://img.test/old.jpg"))
+    val first = List(TwitchCategory("old1", "Old Game", "https://img.test/old.jpg"))
     val second = List(TwitchCategory("new1", "New Game", "https://img.test/new.jpg"))
     for
-      _   <- env.topGamesRepo.replaceTopGames(first)
-      _   <- env.topGamesRepo.replaceTopGames(second)
+      _ <- env.topGamesRepo.replaceTopGames(first)
+      _ <- env.topGamesRepo.replaceTopGames(second)
       ids <- env.topGamesRepo.getTopGameIds
     yield assertEquals(ids, Set("new1"))
   }

@@ -19,9 +19,9 @@ abstract class TwitchPoller(
     val req =
       Request[IO](method = Method.POST, uri = uri"https://id.twitch.tv/oauth2/token").withEntity(
         UrlForm(
-          "client_id"     -> clientId,
+          "client_id" -> clientId,
           "client_secret" -> clientSecret,
-          "grant_type"    -> "client_credentials",
+          "grant_type" -> "client_credentials",
         ),
       )
     client.run(req).use { resp =>
@@ -35,7 +35,7 @@ abstract class TwitchPoller(
   private def getOrRefreshToken: IO[String] =
     appToken.get.flatMap {
       case Some(t) => IO.pure(t)
-      case None    => fetchAppToken.flatTap(t => appToken.set(Some(t)))
+      case None => fetchAppToken.flatTap(t => appToken.set(Some(t)))
     }
 
   protected def withTokenRefresh[A](f: String => IO[A]): IO[A] =
@@ -64,7 +64,7 @@ abstract class TwitchPoller(
         val newAcc = acc ::: resp.pageData
         resp.pageCursor match
           case Some(next) if resp.pageData.nonEmpty => go(Some(next), newAcc)
-          case _                                    => IO.pure(newAcc)
+          case _ => IO.pure(newAcc)
       }
     go(None, Nil)
 

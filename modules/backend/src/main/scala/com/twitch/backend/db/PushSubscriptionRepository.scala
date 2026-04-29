@@ -12,8 +12,8 @@ import com.twitch.backend.SqlDialect
 class PushSubscriptionRepository(xa: Transactor[IO], dialect: SqlDialect):
 
   def savePushSubscription(userId: String, deviceToken: String, platform: String): IO[Unit] =
-    val id   = java.util.UUID.randomUUID().toString
-    val now  = Instant.now().getEpochSecond
+    val id = java.util.UUID.randomUUID().toString
+    val now = Instant.now().getEpochSecond
     val stmt = dialect match
       case SqlDialect.Postgres =>
         sql"""

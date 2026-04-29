@@ -18,7 +18,7 @@ object Main extends IOWebApp:
   def render: Resource[IO, HtmlDivElement[IO]] =
     for
       state <- SignallingRef[IO].of(Model()).toResource
-      _     <- (
+      _ <- (
         ApiClient.fetchUser.flatMap(u => state.update(_.copy(user = u))),
         ApiClient
           .fetchConfig
@@ -38,8 +38,8 @@ object Main extends IOWebApp:
           ),
         ApiClient.fetchTopGameIds.flatMap(ids => state.update(_.copy(topGameIds = ids))),
       ).parTupled.toResource
-      _   <- startNotificationStream(state).background
-      _   <- initPushNotifications(state).background
+      _ <- startNotificationStream(state).background
+      _ <- initPushNotifications(state).background
       app <- appView(state)
     yield app
 
@@ -107,7 +107,7 @@ object Main extends IOWebApp:
           val setup = for
             // Request notification permission from the OS
             perm <- IO.fromPromise(IO(CapacitorPush.requestPermissions()))
-            _    <- IO.whenA(perm.receive == "granted") {
+            _ <- IO.whenA(perm.receive == "granted") {
               // Set up the registration callback before calling register()
               IO.async_[String] { cb =>
                 val _ = CapacitorPush.onRegistration(token => cb(Right(token.value)))
@@ -139,7 +139,7 @@ object Main extends IOWebApp:
               val data = action.notification.data
               if !js.isUndefined(data) then
                 val dynData = data.asInstanceOf[js.Dynamic]
-                val login   = dynData.selectDynamic("streamerLogin")
+                val login = dynData.selectDynamic("streamerLogin")
                 if !js.isUndefined(login) then
                   val _ =
                     dom.window.open(s"https://twitch.tv/${login.asInstanceOf[String]}", "_blank")

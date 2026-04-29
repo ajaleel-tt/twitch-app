@@ -16,7 +16,7 @@ class TagFilterRepository(xa: Transactor[IO], dialect: SqlDialect):
 
   def addTagFilter(userId: String, filterType: String, tag: String): IO[Unit] =
     val normalizedTag = tag.trim.toLowerCase
-    val stmt          = dialect match
+    val stmt = dialect match
       case SqlDialect.Postgres =>
         sql"""
           INSERT INTO tag_filters (user_id, filter_type, tag)

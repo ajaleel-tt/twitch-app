@@ -54,11 +54,11 @@ class TwitchApiClient(
     val req =
       Request[IO](method = Method.POST, uri = uri"https://id.twitch.tv/oauth2/token").withEntity(
         UrlForm(
-          "client_id"     -> clientId,
+          "client_id" -> clientId,
           "client_secret" -> clientSecret,
-          "code"          -> code,
-          "grant_type"    -> "authorization_code",
-          "redirect_uri"  -> redirectUri,
+          "code" -> code,
+          "grant_type" -> "authorization_code",
+          "redirect_uri" -> redirectUri,
         ),
       )
     client.run(req).use { resp =>
@@ -77,9 +77,9 @@ class TwitchApiClient(
     val req =
       Request[IO](method = Method.POST, uri = uri"https://id.twitch.tv/oauth2/token").withEntity(
         UrlForm(
-          "client_id"     -> clientId,
+          "client_id" -> clientId,
           "client_secret" -> clientSecret,
-          "grant_type"    -> "refresh_token",
+          "grant_type" -> "refresh_token",
           "refresh_token" -> refreshToken,
         ),
       )

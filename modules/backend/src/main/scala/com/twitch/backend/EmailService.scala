@@ -24,12 +24,12 @@ class EmailService(
       ),
       "from" -> Json.obj(
         "email" -> fromEmail.asJson,
-        "name"  -> fromName.asJson,
+        "name" -> fromName.asJson,
       ),
       "subject" -> s"Welcome to Twitch Category Tracker, $displayName!".asJson,
       "content" -> Json.arr(
         Json.obj(
-          "type"  -> "text/html".asJson,
+          "type" -> "text/html".asJson,
           "value" -> welcomeHtml(displayName).asJson,
         ),
       ),

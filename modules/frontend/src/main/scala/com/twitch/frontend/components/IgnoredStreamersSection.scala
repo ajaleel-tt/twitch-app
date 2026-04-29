@@ -38,7 +38,7 @@ object IgnoredStreamersSection:
             cls := "flex gap-2",
             input.withSelf { self =>
               (
-                typ         := "text",
+                typ := "text",
                 placeholder := "Type a streamer name...",
                 cls := "bg-twitch-dark border border-gray-700 text-white placeholder-gray-500 rounded-lg px-3 py-1.5 text-sm w-64 focus:outline-none focus:ring-2 focus:ring-twitch-purple focus:border-transparent transition-all",
                 value <-- state.map(_.ignoredStreamers.searchQuery),
@@ -133,7 +133,7 @@ object IgnoredStreamersSection:
         span(cls := "text-white text-sm", channel.display_name),
         span(cls := "text-gray-500 text-xs", s"(${channel.broadcaster_login})"),
         if channel.is_live then span(cls := "text-twitch-live text-xs font-medium ml-1", "● LIVE")
-        else span(cls                    := "text-gray-600 text-xs ml-1", "offline"),
+        else span(cls := "text-gray-600 text-xs ml-1", "offline"),
       ),
       if alreadyIgnored then span(cls := "text-gray-500 text-xs italic", "already ignored")
       else
@@ -186,7 +186,7 @@ object IgnoredStreamersSection:
     notification: StreamNotification,
   ): Resource[IO, HtmlButtonElement[IO]] =
     button(
-      cls   := "text-gray-500 hover:text-twitch-danger text-xs transition-colors cursor-pointer",
+      cls := "text-gray-500 hover:text-twitch-danger text-xs transition-colors cursor-pointer",
       title := s"Ignore ${notification.streamerName}",
       "🚫",
       onClick --> {

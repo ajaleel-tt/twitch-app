@@ -77,7 +77,7 @@ object LoginSection:
     div(
       a(
         cls := "text-sm text-gray-400 hover:text-twitch-purple transition-colors px-5 py-2.5 rounded-lg border border-gray-700 hover:border-twitch-purple inline-block",
-        href   := url,
+        href := url,
         target := "_blank",
         label,
       ),

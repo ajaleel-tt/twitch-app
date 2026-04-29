@@ -5,7 +5,7 @@ import scala.scalajs.js
 object CapacitorPush:
 
   private def capacitor: js.Dynamic = js.Dynamic.global.Capacitor
-  private def plugin: js.Dynamic    = capacitor.Plugins.PushNotifications
+  private def plugin: js.Dynamic = capacitor.Plugins.PushNotifications
 
   // typeof is safe for undeclared variables; direct reference throws ReferenceError in strict mode
   private def capacitorExists: Boolean =
@@ -33,8 +33,8 @@ object CapacitorPush:
 
   @js.native
   trait PushNotificationSchema extends js.Object:
-    val title: String               = js.native
-    val body: String                = js.native
+    val title: String = js.native
+    val body: String = js.native
     val data: js.UndefOr[js.Object] = js.native
 
   @js.native
