@@ -2,6 +2,7 @@ package com.twitch.backend
 
 import scala.concurrent.duration.*
 
+import cats.effect.IO
 import com.typesafe.config.ConfigFactory
 
 case class AppSettings(
@@ -20,7 +21,7 @@ case class AppSettings(
 
 object AppSettings {
 
-  def load: AppSettings = {
+  def load: IO[AppSettings] = IO.blocking {
     val config = ConfigFactory.load().getConfig("twitch-app")
     AppSettings(
       emailFrom = config.getString("email.from"),

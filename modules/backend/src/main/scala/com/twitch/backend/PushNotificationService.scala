@@ -207,10 +207,8 @@ object ServiceAccountKey {
     parse(json, "FCM_SERVICE_ACCOUNT_JSON env var")
 
   def fromFile(path: String): IO[ServiceAccountKey] =
-    IO.blocking {
-      val source = scala.io.Source.fromFile(path)
-      try source.mkString
-      finally source.close()
-    }.flatMap(parse(_, s"file $path"))
+    IO.blocking(scala.io.Source.fromFile(path))
+      .bracket(source => IO.blocking(source.mkString))(source => IO.blocking(source.close()))
+      .flatMap(parse(_, s"file $path"))
 
 }
