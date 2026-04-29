@@ -32,19 +32,18 @@ case class TwitchPagination(
   cursor: Option[String],
 ) derives Codec.AsObject
 
-trait PaginatedResponse[A] {
-  def pageData: List[A]
-  def pageCursor: Option[String]
+abstract class PaginatedResponse[A] {
+  def data: List[A]
+  def pagination: Option[TwitchPagination]
+  def pageData: List[A] = data
+  def pageCursor: Option[String] = pagination.flatMap(_.cursor)
 }
 
 case class TwitchSearchCategoriesResponse(
   data: List[TwitchCategory],
   pagination: Option[TwitchPagination],
 ) extends PaginatedResponse[TwitchCategory]
-    derives Codec.AsObject {
-  def pageData = data
-  def pageCursor = pagination.flatMap(_.cursor)
-}
+    derives Codec.AsObject
 
 case class TwitchChannel(
   id: String,
@@ -86,10 +85,7 @@ case class TwitchStreamsResponse(
   data: List[TwitchStream],
   pagination: Option[TwitchPagination],
 ) extends PaginatedResponse[TwitchStream]
-    derives Codec.AsObject {
-  def pageData = data
-  def pageCursor = pagination.flatMap(_.cursor)
-}
+    derives Codec.AsObject
 
 case class StreamNotification(
   categoryId: String,
