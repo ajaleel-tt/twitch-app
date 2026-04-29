@@ -184,7 +184,7 @@ object ServiceAccountKey:
           cursor.get[String]("project_id"),
         ) match
           case (Right(email), Right(key), Right(pid)) =>
-            IO.pure(ServiceAccountKey(email, key, pid))
+            IO.pure(ServiceAccountKey(clientEmail = email, privateKey = key, projectId = pid))
           case _ =>
             IO.raiseError(new RuntimeException(s"Invalid service account key from $source"))
       case Left(err) =>
