@@ -565,28 +565,12 @@ Nested(IO(Option(42))).map(_ + 1).value
 
 ---
 
-## 14. Scalafmt Configuration
+## 14. Scalafmt
 
-We recommend creating a `.scalafmt.conf` to mechanically enforce what it can:
+This project uses [scalafmt](https://scalameta.org/scalafmt/) for automated formatting. The configuration lives in `.scalafmt.conf` at the project root and enforces line length, trailing commas, import sorting, and modifier ordering.
 
-```hocon
-version = "3.8.6"
-runner.dialect = scala3
+To format all files: `sbt scalafmtAll`
 
-maxColumn = 100
-indent.main = 2
-indent.defnSite = 2
+**What scalafmt enforces:** line length, indentation, trailing commas, import sorting, modifier ordering, generated file exclusions.
 
-trailingCommas = always
-
-rewrite.rules = [SortImports, RedundantBraces, SortModifiers]
-rewrite.sortModifiers.order = [
-  "override", "private", "protected", "final",
-  "sealed", "abstract", "implicit", "lazy"
-]
-
-newlines.afterCurlyLambdaParams = squash
-align.preset = more
-```
-
-**Note:** Scalafmt cannot enforce parameter ordering preferences or the named-argument rule. Those require code review discipline.
+**What requires code review:** parameter ordering preferences (Section 3), named arguments for same-type parameters (Section 4), wire-format naming exceptions (Section 2).
