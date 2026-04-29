@@ -14,7 +14,12 @@ class IgnoredStreamerRepository(xa: Transactor[IO], dialect: SqlDialect):
       .to[List]
       .transact(xa)
 
-  def addIgnoredStreamer(userId: String, streamerId: String, streamerLogin: String, streamerName: String): IO[Unit] =
+  def addIgnoredStreamer(
+    userId: String,
+    streamerId: String,
+    streamerLogin: String,
+    streamerName: String,
+  ): IO[Unit] =
     val stmt = dialect match
       case SqlDialect.Postgres =>
         sql"""
@@ -32,4 +37,7 @@ class IgnoredStreamerRepository(xa: Transactor[IO], dialect: SqlDialect):
 
   def removeIgnoredStreamer(userId: String, streamerId: String): IO[Unit] =
     sql"DELETE FROM ignored_streamers WHERE user_id = $userId AND streamer_id = $streamerId"
-      .update.run.transact(xa).void
+      .update
+      .run
+      .transact(xa)
+      .void

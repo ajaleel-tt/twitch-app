@@ -5,7 +5,7 @@ import calico.html.io.{*, given}
 import cats.effect.*
 import fs2.concurrent.*
 import fs2.dom.*
-import com.twitch.frontend.{Model, ApiClient}
+import com.twitch.frontend.{ApiClient, Model}
 import com.twitch.core.*
 
 object TagFiltersSection:
@@ -15,20 +15,32 @@ object TagFiltersSection:
       cls := "w-full mb-6",
       div(
         cls := "bg-twitch-dark-card border border-gray-800 rounded-xl p-4 flex flex-col gap-4",
-        filterRow(state, "include", "Only show streams tagged:", "e.g. English",
-          _.tagFilters.newIncludeTag, (m, v) => m.copy(tagFilters = m.tagFilters.copy(newIncludeTag = v))),
-        filterRow(state, "exclude", "Hide streams tagged:", "e.g. Speedrun",
-          _.tagFilters.newExcludeTag, (m, v) => m.copy(tagFilters = m.tagFilters.copy(newExcludeTag = v)))
-      )
+        filterRow(
+          state,
+          "include",
+          "Only show streams tagged:",
+          "e.g. English",
+          _.tagFilters.newIncludeTag,
+          (m, v) => m.copy(tagFilters = m.tagFilters.copy(newIncludeTag = v)),
+        ),
+        filterRow(
+          state,
+          "exclude",
+          "Hide streams tagged:",
+          "e.g. Speedrun",
+          _.tagFilters.newExcludeTag,
+          (m, v) => m.copy(tagFilters = m.tagFilters.copy(newExcludeTag = v)),
+        ),
+      ),
     )
 
   private def filterRow(
-      state: SignallingRef[IO, Model],
-      filterType: String,
-      label: String,
-      placeholderText: String,
-      getInputValue: Model => String,
-      setInputValue: (Model, String) => Model
+    state: SignallingRef[IO, Model],
+    filterType: String,
+    label: String,
+    placeholderText: String,
+    getInputValue: Model => String,
+    setInputValue: (Model, String) => Model,
   ): Resource[IO, HtmlDivElement[IO]] =
     val pillColor = if filterType == "include" then "bg-twitch-purple" else "bg-twitch-danger"
 
@@ -38,9 +50,13 @@ object TagFiltersSection:
         if tag.isEmpty || tag.length > 25 then IO.unit
         else
           (ApiClient.addTagFilter(filterType, tag) *>
-            ApiClient.fetchTagFilters.flatMap(filters =>
-              state.update(s => setInputValue(s.copy(tagFilters = s.tagFilters.copy(filters = filters)), ""))
-            )).start.void
+            ApiClient
+              .fetchTagFilters
+              .flatMap(filters =>
+                state.update(s =>
+                  setInputValue(s.copy(tagFilters = s.tagFilters.copy(filters = filters)), ""),
+                ),
+              )).start.void
       }
 
     div(
@@ -53,37 +69,35 @@ object TagFiltersSection:
           m.tagFilters.filters.filter(_.filterType == filterType).map { f =>
             tagPill(state, f, pillColor)
           }
-        }
+        },
       ),
       // Input row
       div(
         cls := "flex gap-2",
         input.withSelf { self =>
           (
-            typ := "text",
+            typ         := "text",
             placeholder := placeholderText,
             cls := "bg-twitch-dark border border-gray-700 text-white placeholder-gray-500 rounded-lg px-3 py-1.5 text-sm w-48 focus:outline-none focus:ring-2 focus:ring-twitch-purple focus:border-transparent transition-all",
             value <-- state.map(getInputValue),
-            onInput --> { _.foreach(_ =>
-              self.value.get.flatMap(v => state.update(m => setInputValue(m, v)))
-            )},
-            onKeyPress --> { _.foreach(e =>
-              IO.whenA(e.key == "Enter")(addTag)
-            )}
+            onInput --> {
+              _.foreach(_ => self.value.get.flatMap(v => state.update(m => setInputValue(m, v))))
+            },
+            onKeyPress --> { _.foreach(e => IO.whenA(e.key == "Enter")(addTag)) },
           )
         },
         button(
           cls := s"$pillColor hover:opacity-80 text-white text-sm px-3 py-1.5 rounded-lg transition-colors cursor-pointer",
           "Add",
-          onClick --> { _.foreach(_ => addTag) }
-        )
-      )
+          onClick --> { _.foreach(_ => addTag) },
+        ),
+      ),
     )
 
   private def tagPill(
-      state: SignallingRef[IO, Model],
-      filter: TagFilter,
-      colorClass: String
+    state: SignallingRef[IO, Model],
+    filter: TagFilter,
+    colorClass: String,
   ): Resource[IO, HtmlSpanElement[IO]] =
     span(
       cls := s"$colorClass text-white text-xs px-2.5 py-1 rounded-full flex items-center gap-1.5",
@@ -91,11 +105,15 @@ object TagFiltersSection:
       button(
         cls := "hover:text-gray-300 text-white font-bold cursor-pointer text-xs leading-none",
         "✕",
-        onClick --> { _.foreach(_ =>
-          (ApiClient.removeTagFilter(filter.filterType, filter.tag) *>
-            ApiClient.fetchTagFilters.flatMap(filters =>
-              state.update(m => m.copy(tagFilters = m.tagFilters.copy(filters = filters)))
-            )).start.void
-        )}
-      )
+        onClick --> {
+          _.foreach(_ =>
+            (ApiClient.removeTagFilter(filter.filterType, filter.tag) *>
+              ApiClient
+                .fetchTagFilters
+                .flatMap(filters =>
+                  state.update(m => m.copy(tagFilters = m.tagFilters.copy(filters = filters))),
+                )).start.void,
+          )
+        },
+      ),
     )

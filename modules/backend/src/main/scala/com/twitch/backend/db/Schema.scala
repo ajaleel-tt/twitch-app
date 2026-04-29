@@ -66,7 +66,9 @@ object Schema:
       )
     """.update.run
     val createPushUniqueIndex =
-      sql"CREATE UNIQUE INDEX IF NOT EXISTS idx_push_user_token ON push_subscriptions (user_id, device_token)".update.run
+      sql"CREATE UNIQUE INDEX IF NOT EXISTS idx_push_user_token ON push_subscriptions (user_id, device_token)"
+        .update
+        .run
     val createIgnoredStreamers = sql"""
       CREATE TABLE IF NOT EXISTS ignored_streamers (
         user_id VARCHAR NOT NULL,
@@ -84,5 +86,9 @@ object Schema:
       )
     """.update.run
     val createFollowedCategoryIndex =
-      sql"CREATE INDEX IF NOT EXISTS idx_followed_category_user ON followed_categories (category_id, user_id)".update.run
-    (createFollowed *> createTagFilters *> createIgnoredStreamers *> createSessions *> createUsers *> migrateUsersAddLogin *> migrateUsersAddDisplayName *> createPushSubscriptions *> createPushUniqueIndex *> createTopGames *> createFollowedCategoryIndex).transact(xa).void
+      sql"CREATE INDEX IF NOT EXISTS idx_followed_category_user ON followed_categories (category_id, user_id)"
+        .update
+        .run
+    (createFollowed *> createTagFilters *> createIgnoredStreamers *> createSessions *> createUsers *> migrateUsersAddLogin *> migrateUsersAddDisplayName *> createPushSubscriptions *> createPushUniqueIndex *> createTopGames *> createFollowedCategoryIndex)
+      .transact(xa)
+      .void

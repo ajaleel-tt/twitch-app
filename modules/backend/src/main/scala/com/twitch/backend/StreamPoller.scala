@@ -13,42 +13,64 @@ import com.twitch.core.*
 import com.twitch.backend.db.*
 
 class StreamPoller(
-    clientId: String,
-    clientSecret: String,
-    client: Client[IO],
-    followRepo: FollowRepository,
-    tagFilterRepo: TagFilterRepository,
-    ignoredStreamerRepo: IgnoredStreamerRepository,
-    pushRepo: PushSubscriptionRepository,
-    notificationQueues: Ref[IO, Map[String, (String, Queue[IO, StreamNotification])]],
-    appToken: Ref[IO, Option[String]],
-    notifiedStreamIds: Ref[IO, Set[String]],
-    settings: AppSettings,
-    pushService: Option[PushService]
+  clientId: String,
+  clientSecret: String,
+  client: Client[IO],
+  followRepo: FollowRepository,
+  tagFilterRepo: TagFilterRepository,
+  ignoredStreamerRepo: IgnoredStreamerRepository,
+  pushRepo: PushSubscriptionRepository,
+  notificationQueues: Ref[IO, Map[String, (String, Queue[IO, StreamNotification])]],
+  appToken: Ref[IO, Option[String]],
+  notifiedStreamIds: Ref[IO, Set[String]],
+  settings: AppSettings,
+  pushService: Option[PushService],
 ) extends TwitchPoller(clientId, clientSecret, client, appToken):
 
-  private def fetchStreamsPage(token: String, categoryId: String, cursor: Option[String]): IO[TwitchStreamsResponse] =
+  private def fetchStreamsPage(
+    token: String,
+    categoryId: String,
+    cursor: Option[String],
+  ): IO[TwitchStreamsResponse] =
     val baseUri = uri"https://api.twitch.tv/helix/streams"
       .withQueryParam("game_id", categoryId)
       .withQueryParam("first", settings.streamsPageSize.toString)
     client.expect[TwitchStreamsResponse](buildAuthedRequest(baseUri, token, cursor))
 
   private def fetchLiveStreams(token: String, categoryIds: List[String]): IO[List[TwitchStream]] =
-    categoryIds.parTraverseN(settings.parallelCategories) { categoryId =>
-      fetchPaginated[TwitchStream] { (tk, cur) =>
-        fetchStreamsPage(tk, categoryId, cur).map { resp =>
-          new PaginatedResponse[TwitchStream]:
-            def pageData = resp.data
-            def pageCursor = resp.pagination.flatMap(_.cursor)
-        }
-      }(token)
-    }.map(_.flatten)
+    categoryIds
+      .parTraverseN(settings.parallelCategories) { categoryId =>
+        fetchPaginated[TwitchStream] { (tk, cur) =>
+          fetchStreamsPage(tk, categoryId, cur).map { resp =>
+            new PaginatedResponse[TwitchStream]:
+              def pageData   = resp.data
+              def pageCursor = resp.pagination.flatMap(_.cursor)
+          }
+        }(token)
+      }
+      .map(_.flatten)
 
-  private def loadUserPreferences(userIds: Set[String]): IO[(Map[String, Set[String]], Map[String, List[com.twitch.core.TagFilter]], Map[String, Set[String]])] =
+  private def loadUserPreferences(userIds: Set[String]): IO[
+    (
+      Map[String, Set[String]],
+      Map[String, List[com.twitch.core.TagFilter]],
+      Map[String, Set[String]],
+    ),
+  ] =
     for
-      followedByUser <- userIds.toList.traverse(uid => followRepo.getFollowed(uid).map(cats => uid -> cats.map(_.id).toSet))
-      filtersByUser  <- userIds.toList.traverse(uid => tagFilterRepo.getTagFilters(uid).map(filters => uid -> filters))
-      ignoredByUser  <- userIds.toList.traverse(uid => ignoredStreamerRepo.getIgnoredStreamers(uid).map(list => uid -> list.map(_.streamerId).toSet))
+      followedByUser <- userIds
+        .toList
+        .traverse(uid => followRepo.getFollowed(uid).map(cats => uid -> cats.map(_.id).toSet))
+      filtersByUser <- userIds
+        .toList
+        .traverse(uid => tagFilterRepo.getTagFilters(uid).map(filters => uid -> filters))
+      ignoredByUser <- userIds
+        .toList
+        .traverse(uid =>
+          ignoredStreamerRepo
+            .getIgnoredStreamers(uid)
+            .map(list => uid -> list.map(_.streamerId).toSet),
+        )
     yield (followedByUser.toMap, filtersByUser.toMap, ignoredByUser.toMap)
 
   private def broadcastNotifications(notifications: List[StreamNotification]): IO[Unit] =
@@ -58,9 +80,16 @@ class StreamPoller(
       queues <- notificationQueues.get
       sseUserIds = queues.values.map(_._1).toSet
       (sseFollowed, sseFilters, sseIgnored) <- loadUserPreferences(sseUserIds)
-      _ <- queues.values.toList.traverse_ { case (userId, queue) =>
-        val filtered = StreamLogic.filteredNotificationsForUser(userId, byCategoryId, sseFollowed, sseFilters, sseIgnored)
-        filtered.traverse_(queue.offer)
+      _                                     <- queues.values.toList.traverse_ {
+        case (userId, queue) =>
+          val filtered = StreamLogic.filteredNotificationsForUser(
+            userId,
+            byCategoryId,
+            sseFollowed,
+            sseFilters,
+            sseIgnored,
+          )
+          filtered.traverse_(queue.offer)
       }
       // Push delivery: database-driven, independent of SSE connections
       _ <- pushService.fold(IO.unit) { ps =>
@@ -68,41 +97,57 @@ class StreamPoller(
           pushUserIds <- followRepo.getUsersFollowingCategories(byCategoryId.keySet)
           (pushFollowed, pushFilters, pushIgnored) <- loadUserPreferences(pushUserIds)
           _ <- sendPushNotifications(ps, notifications, pushFollowed, pushFilters, pushIgnored)
-        yield ()).handleErrorWith(e => IO.println(s"Push notification error: ${e.getMessage}")).start.void
+        yield ())
+          .handleErrorWith(e => IO.println(s"Push notification error: ${e.getMessage}"))
+          .start
+          .void
       }
     yield ()
 
   private def sendPushNotifications(
-      ps: PushService,
-      notifications: List[StreamNotification],
-      followedMap: Map[String, Set[String]],
-      filtersMap: Map[String, List[com.twitch.core.TagFilter]],
-      ignoredMap: Map[String, Set[String]]
+    ps: PushService,
+    notifications: List[StreamNotification],
+    followedMap: Map[String, Set[String]],
+    filtersMap: Map[String, List[com.twitch.core.TagFilter]],
+    ignoredMap: Map[String, Set[String]],
   ): IO[Unit] =
-    val byCategoryId = notifications.groupBy(_.categoryId)
-    val allFollowingUserIds = followedMap.filter { case (_, catIds) =>
-      catIds.exists(byCategoryId.contains)
+    val byCategoryId        = notifications.groupBy(_.categoryId)
+    val allFollowingUserIds = followedMap.filter {
+      case (_, catIds) =>
+        catIds.exists(byCategoryId.contains)
     }.keySet
-    pushRepo.getPushSubscriptionsForUsers(allFollowingUserIds).flatMap { subs =>
-      val subsByUser = subs.groupBy(_.userId)
-      subsByUser.toList.traverse_ { case (userId, userSubs) =>
-        val filtered = StreamLogic.filteredNotificationsForUser(userId, byCategoryId, followedMap, filtersMap, ignoredMap)
-        if filtered.nonEmpty then ps.sendBatch(userSubs, filtered)
-        else IO.unit
+    pushRepo
+      .getPushSubscriptionsForUsers(allFollowingUserIds)
+      .flatMap { subs =>
+        val subsByUser = subs.groupBy(_.userId)
+        subsByUser.toList.traverse_ {
+          case (userId, userSubs) =>
+            val filtered = StreamLogic.filteredNotificationsForUser(
+              userId,
+              byCategoryId,
+              followedMap,
+              filtersMap,
+              ignoredMap,
+            )
+            if filtered.nonEmpty then ps.sendBatch(userSubs, filtered)
+            else IO.unit
+        }
       }
-    }.handleErrorWith(e => IO.println(s"Push notification error: ${e.getMessage}"))
+      .handleErrorWith(e => IO.println(s"Push notification error: ${e.getMessage}"))
 
   // First poll seeds the set without sending notifications so we don't
   // flood the user with every stream that happens to be live at startup.
   private def seedOnce: IO[Unit] =
     for
       allCategories <- followRepo.getAllFollowedCategories
-      _ <- IO.whenA(allCategories.nonEmpty) {
+      _             <- IO.whenA(allCategories.nonEmpty) {
         for
           streams <- withTokenRefresh(token => fetchLiveStreams(token, allCategories.map(_.id)))
           liveIds = streams.collect { case s if s.`type` == "live" => s.id }.toSet
           _ <- notifiedStreamIds.set(liveIds)
-          _ <- IO.println(s"Poller: seeded ${liveIds.size} already-live streams across ${allCategories.size} categories")
+          _ <- IO.println(
+            s"Poller: seeded ${liveIds.size} already-live streams across ${allCategories.size} categories",
+          )
         yield ()
       }
     yield ()
@@ -110,14 +155,21 @@ class StreamPoller(
   private def pollOnce: IO[Unit] =
     for
       allCategories <- followRepo.getAllFollowedCategories
-      _ <- IO.whenA(allCategories.nonEmpty) {
+      _             <- IO.whenA(allCategories.nonEmpty) {
         for
           streams <- withTokenRefresh(token => fetchLiveStreams(token, allCategories.map(_.id)))
-          now <- IO(Instant.now())
+          now     <- IO(Instant.now())
           alreadyNotified <- notifiedStreamIds.get
-          (newStreams, updatedNotified) = StreamLogic.findNewStreams(streams, alreadyNotified, now, settings.recentlyLiveWindow)
+          (newStreams, updatedNotified) = StreamLogic.findNewStreams(
+            streams,
+            alreadyNotified,
+            now,
+            settings.recentlyLiveWindow,
+          )
           _ <- notifiedStreamIds.set(updatedNotified)
-          _ <- IO.println(s"Poller: fetched ${streams.size} total streams across ${allCategories.size} categories, ${newStreams.size} new")
+          _ <- IO.println(
+            s"Poller: fetched ${streams.size} total streams across ${allCategories.size} categories, ${newStreams.size} new",
+          )
           _ <- IO.whenA(newStreams.nonEmpty) {
             broadcastNotifications(newStreams.map(StreamLogic.toNotification))
           }
@@ -128,22 +180,38 @@ class StreamPoller(
   def start: IO[Nothing] =
     IO.println(s"StreamPoller: starting (polling every ${settings.pollerInterval.toSeconds}s)") *>
       seedOnce.handleErrorWith(e => IO.println(s"StreamPoller seed error: $e")) *>
-      (IO.sleep(settings.pollerInterval) *> pollOnce.handleErrorWith(e => IO.println(s"StreamPoller error: $e"))).foreverM
+      (IO.sleep(settings.pollerInterval) *> pollOnce.handleErrorWith(e =>
+        IO.println(s"StreamPoller error: $e"),
+      )).foreverM
 
 object StreamPoller:
+
   def make(
-      clientId: String,
-      clientSecret: String,
-      client: Client[IO],
-      followRepo: FollowRepository,
-      tagFilterRepo: TagFilterRepository,
-      ignoredStreamerRepo: IgnoredStreamerRepository,
-      pushRepo: PushSubscriptionRepository,
-      notificationQueues: Ref[IO, Map[String, (String, Queue[IO, StreamNotification])]],
-      settings: AppSettings,
-      pushService: Option[PushService] = None
+    clientId: String,
+    clientSecret: String,
+    client: Client[IO],
+    followRepo: FollowRepository,
+    tagFilterRepo: TagFilterRepository,
+    ignoredStreamerRepo: IgnoredStreamerRepository,
+    pushRepo: PushSubscriptionRepository,
+    notificationQueues: Ref[IO, Map[String, (String, Queue[IO, StreamNotification])]],
+    settings: AppSettings,
+    pushService: Option[PushService] = None,
   ): IO[StreamPoller] =
     for
-      tokenRef <- IO.ref(Option.empty[String])
+      tokenRef    <- IO.ref(Option.empty[String])
       notifiedRef <- IO.ref(Set.empty[String])
-    yield new StreamPoller(clientId, clientSecret, client, followRepo, tagFilterRepo, ignoredStreamerRepo, pushRepo, notificationQueues, tokenRef, notifiedRef, settings, pushService)
+    yield new StreamPoller(
+      clientId,
+      clientSecret,
+      client,
+      followRepo,
+      tagFilterRepo,
+      ignoredStreamerRepo,
+      pushRepo,
+      notificationQueues,
+      tokenRef,
+      notifiedRef,
+      settings,
+      pushService,
+    )

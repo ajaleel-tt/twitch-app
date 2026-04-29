@@ -10,35 +10,64 @@ class StreamLogicSpec extends FunSuite:
   // ── Test fixtures ──────────────────────────────────────────────────
 
   private def mkStream(
-      id: String = "123",
-      userId: String = "user1",
-      userLogin: String = "streamer1",
-      userName: String = "Streamer One",
-      gameId: String = "game1",
-      gameName: String = "Some Game",
-      tpe: String = "live",
-      title: String = "Playing games",
-      viewerCount: Int = 100,
-      startedAt: String = "2024-01-01T12:00:00Z",
-      thumbnailUrl: String = "https://twitch.tv/thumb-{width}x{height}.jpg",
-      tags: Option[List[String]] = None
+    id: String = "123",
+    userId: String = "user1",
+    userLogin: String = "streamer1",
+    userName: String = "Streamer One",
+    gameId: String = "game1",
+    gameName: String = "Some Game",
+    tpe: String = "live",
+    title: String = "Playing games",
+    viewerCount: Int = 100,
+    startedAt: String = "2024-01-01T12:00:00Z",
+    thumbnailUrl: String = "https://twitch.tv/thumb-{width}x{height}.jpg",
+    tags: Option[List[String]] = None,
   ): TwitchStream =
-    TwitchStream(id, userId, userLogin, userName, gameId, gameName, tpe, title, viewerCount, startedAt, thumbnailUrl, tags)
+    TwitchStream(
+      id,
+      userId,
+      userLogin,
+      userName,
+      gameId,
+      gameName,
+      tpe,
+      title,
+      viewerCount,
+      startedAt,
+      thumbnailUrl,
+      tags,
+    )
 
   private def mkNotification(
-      categoryId: String = "game1",
-      tags: List[String] = Nil
+    categoryId: String = "game1",
+    tags: List[String] = Nil,
   ): StreamNotification =
-    StreamNotification(categoryId, "Some Game", "user1", "streamer1", "Streamer One", "Playing games", 100, "thumb.jpg", tags)
+    StreamNotification(
+      categoryId,
+      "Some Game",
+      "user1",
+      "streamer1",
+      "Streamer One",
+      "Playing games",
+      100,
+      "thumb.jpg",
+      tags,
+    )
 
   // ── toNotification ─────────────────────────────────────────────────
 
   test("toNotification maps all fields correctly") {
     val stream = mkStream(
-      id = "s1", userId = "u1", userLogin = "login1", userName = "Name1",
-      gameId = "g1", gameName = "Game1", title = "My Title", viewerCount = 42,
+      id = "s1",
+      userId = "u1",
+      userLogin = "login1",
+      userName = "Name1",
+      gameId = "g1",
+      gameName = "Game1",
+      title = "My Title",
+      viewerCount = 42,
       thumbnailUrl = "https://example.com/thumb-{width}x{height}.jpg",
-      tags = Some(List("English", "FPS"))
+      tags = Some(List("English", "FPS")),
     )
     val n = StreamLogic.toNotification(stream)
     assertEquals(n.categoryId, "g1")
@@ -54,7 +83,7 @@ class StreamLogicSpec extends FunSuite:
 
   test("toNotification replaces width and height placeholders") {
     val stream = mkStream(thumbnailUrl = "https://cdn.twitch.tv/preview-{width}x{height}.jpg")
-    val n = StreamLogic.toNotification(stream)
+    val n      = StreamLogic.toNotification(stream)
     assertEquals(n.thumbnailUrl, "https://cdn.twitch.tv/preview-320x180.jpg")
   }
 
@@ -71,7 +100,7 @@ class StreamLogicSpec extends FunSuite:
   // ── recentlyWentLive ──────────────────────────────────────────────
 
   private val window = 5.minutes
-  private val now = Instant.parse("2024-01-01T12:10:00Z")
+  private val now    = Instant.parse("2024-01-01T12:10:00Z")
 
   test("recentlyWentLive: stream started 4 minutes ago is recent") {
     val stream = mkStream(startedAt = "2024-01-01T12:06:01Z")
@@ -102,7 +131,10 @@ class StreamLogicSpec extends FunSuite:
 
   test("findNewStreams: returns recent streams not already notified") {
     val s1 = mkStream(id = "s1", startedAt = "2024-01-01T12:06:01Z") // 4 min ago — recent
-    val s2 = mkStream(id = "s2", startedAt = "2024-01-01T12:06:01Z") // 4 min ago — recent but already notified
+    val s2 = mkStream(
+      id = "s2",
+      startedAt = "2024-01-01T12:06:01Z",
+    ) // 4 min ago — recent but already notified
     val s3 = mkStream(id = "s3", startedAt = "2024-01-01T12:00:00Z") // 10 min ago — not recent
     val alreadyNotified = Set("s2")
     val (newStreams, _) = StreamLogic.findNewStreams(List(s1, s2, s3), alreadyNotified, now, window)
@@ -110,22 +142,23 @@ class StreamLogicSpec extends FunSuite:
   }
 
   test("findNewStreams: returns empty when all recent streams already notified") {
-    val s1 = mkStream(id = "s1", startedAt = "2024-01-01T12:06:01Z")
+    val s1              = mkStream(id = "s1", startedAt = "2024-01-01T12:06:01Z")
     val (newStreams, _) = StreamLogic.findNewStreams(List(s1), Set("s1"), now, window)
     assertEquals(newStreams, Nil)
   }
 
   test("findNewStreams: returns empty when no streams are recent") {
-    val s1 = mkStream(id = "s1", startedAt = "2024-01-01T12:00:00Z") // 10 min ago
+    val s1              = mkStream(id = "s1", startedAt = "2024-01-01T12:00:00Z") // 10 min ago
     val (newStreams, _) = StreamLogic.findNewStreams(List(s1), Set.empty, now, window)
     assertEquals(newStreams, Nil)
   }
 
   test("findNewStreams: updated notified set includes ALL stream IDs, not just new ones") {
-    val s1 = mkStream(id = "s1", startedAt = "2024-01-01T12:06:01Z") // recent, new
-    val s2 = mkStream(id = "s2", startedAt = "2024-01-01T12:00:00Z") // old, not recent
-    val alreadyNotified = Set("s0") // previously seen
-    val (_, updatedNotified) = StreamLogic.findNewStreams(List(s1, s2), alreadyNotified, now, window)
+    val s1              = mkStream(id = "s1", startedAt = "2024-01-01T12:06:01Z") // recent, new
+    val s2              = mkStream(id = "s2", startedAt = "2024-01-01T12:00:00Z") // old, not recent
+    val alreadyNotified = Set("s0")                                               // previously seen
+    val (_, updatedNotified) =
+      StreamLogic.findNewStreams(List(s1, s2), alreadyNotified, now, window)
     assertEquals(updatedNotified, Set("s0", "s1", "s2"))
   }
 
@@ -145,73 +178,74 @@ class StreamLogicSpec extends FunSuite:
   // ── applyTagFilters ───────────────────────────────────────────────
 
   test("applyTagFilters: no filters passes all notifications") {
-    val notifications = List(mkNotification(tags = List("English")), mkNotification(tags = List("Spanish")))
+    val notifications =
+      List(mkNotification(tags = List("English")), mkNotification(tags = List("Spanish")))
     val result = StreamLogic.applyTagFilters(notifications, Nil)
     assertEquals(result.size, 2)
   }
 
   test("applyTagFilters: include filter passes matching tag (case-insensitive)") {
-    val n = mkNotification(tags = List("English"))
+    val n       = mkNotification(tags = List("English"))
     val filters = List(TagFilter("include", "english"))
     assertEquals(StreamLogic.applyTagFilters(List(n), filters).size, 1)
   }
 
   test("applyTagFilters: include filter rejects non-matching tag") {
-    val n = mkNotification(tags = List("Spanish"))
+    val n       = mkNotification(tags = List("Spanish"))
     val filters = List(TagFilter("include", "english"))
     assertEquals(StreamLogic.applyTagFilters(List(n), filters).size, 0)
   }
 
   test("applyTagFilters: include filter rejects stream with no tags") {
-    val n = mkNotification(tags = Nil)
+    val n       = mkNotification(tags = Nil)
     val filters = List(TagFilter("include", "english"))
     assertEquals(StreamLogic.applyTagFilters(List(n), filters).size, 0)
   }
 
   test("applyTagFilters: exclude filter removes matching tag (case-insensitive)") {
-    val n = mkNotification(tags = List("Speedrun"))
+    val n       = mkNotification(tags = List("Speedrun"))
     val filters = List(TagFilter("exclude", "speedrun"))
     assertEquals(StreamLogic.applyTagFilters(List(n), filters).size, 0)
   }
 
   test("applyTagFilters: exclude filter passes non-matching tag") {
-    val n = mkNotification(tags = List("English"))
+    val n       = mkNotification(tags = List("English"))
     val filters = List(TagFilter("exclude", "speedrun"))
     assertEquals(StreamLogic.applyTagFilters(List(n), filters).size, 1)
   }
 
   test("applyTagFilters: exclude filter passes stream with no tags") {
-    val n = mkNotification(tags = Nil)
+    val n       = mkNotification(tags = Nil)
     val filters = List(TagFilter("exclude", "speedrun"))
     assertEquals(StreamLogic.applyTagFilters(List(n), filters).size, 1)
   }
 
   test("applyTagFilters: include + exclude, stream has both tags, exclude wins") {
-    val n = mkNotification(tags = List("English", "Speedrun"))
+    val n       = mkNotification(tags = List("English", "Speedrun"))
     val filters = List(TagFilter("include", "english"), TagFilter("exclude", "speedrun"))
     assertEquals(StreamLogic.applyTagFilters(List(n), filters).size, 0)
   }
 
   test("applyTagFilters: include + exclude, stream matches include only") {
-    val n = mkNotification(tags = List("English"))
+    val n       = mkNotification(tags = List("English"))
     val filters = List(TagFilter("include", "english"), TagFilter("exclude", "speedrun"))
     assertEquals(StreamLogic.applyTagFilters(List(n), filters).size, 1)
   }
 
   test("applyTagFilters: include + exclude, stream matches exclude only") {
-    val n = mkNotification(tags = List("Speedrun"))
+    val n       = mkNotification(tags = List("Speedrun"))
     val filters = List(TagFilter("include", "english"), TagFilter("exclude", "speedrun"))
     assertEquals(StreamLogic.applyTagFilters(List(n), filters).size, 0)
   }
 
   test("applyTagFilters: multiple include filters, stream matches one") {
-    val n = mkNotification(tags = List("French"))
+    val n       = mkNotification(tags = List("French"))
     val filters = List(TagFilter("include", "english"), TagFilter("include", "french"))
     assertEquals(StreamLogic.applyTagFilters(List(n), filters).size, 1)
   }
 
   test("applyTagFilters: multiple include filters, stream matches none") {
-    val n = mkNotification(tags = List("Japanese"))
+    val n       = mkNotification(tags = List("Japanese"))
     val filters = List(TagFilter("include", "english"), TagFilter("include", "french"))
     assertEquals(StreamLogic.applyTagFilters(List(n), filters).size, 0)
   }
@@ -219,35 +253,44 @@ class StreamLogicSpec extends FunSuite:
   // ── applyIgnoredStreamers ─────────────────────────────────────────
 
   private def mkNotificationWithStreamer(
-      streamerId: String,
-      streamerLogin: String = "login",
-      streamerName: String = "Name",
-      categoryId: String = "game1"
+    streamerId: String,
+    streamerLogin: String = "login",
+    streamerName: String = "Name",
+    categoryId: String = "game1",
   ): StreamNotification =
-    StreamNotification(categoryId, "Some Game", streamerId, streamerLogin, streamerName, "Playing games", 100, "thumb.jpg")
+    StreamNotification(
+      categoryId,
+      "Some Game",
+      streamerId,
+      streamerLogin,
+      streamerName,
+      "Playing games",
+      100,
+      "thumb.jpg",
+    )
 
   test("applyIgnoredStreamers: empty ignored set passes all notifications") {
     val notifications = List(mkNotificationWithStreamer("u1"), mkNotificationWithStreamer("u2"))
-    val result = StreamLogic.applyIgnoredStreamers(notifications, Set.empty)
+    val result        = StreamLogic.applyIgnoredStreamers(notifications, Set.empty)
     assertEquals(result.size, 2)
   }
 
   test("applyIgnoredStreamers: filters out ignored streamer") {
     val notifications = List(mkNotificationWithStreamer("u1"), mkNotificationWithStreamer("u2"))
-    val result = StreamLogic.applyIgnoredStreamers(notifications, Set("u1"))
+    val result        = StreamLogic.applyIgnoredStreamers(notifications, Set("u1"))
     assertEquals(result.size, 1)
     assertEquals(result.head.streamerId, "u2")
   }
 
   test("applyIgnoredStreamers: filters out all if all ignored") {
     val notifications = List(mkNotificationWithStreamer("u1"), mkNotificationWithStreamer("u2"))
-    val result = StreamLogic.applyIgnoredStreamers(notifications, Set("u1", "u2"))
+    val result        = StreamLogic.applyIgnoredStreamers(notifications, Set("u1", "u2"))
     assertEquals(result.size, 0)
   }
 
   test("applyIgnoredStreamers: passes all if none match ignored set") {
     val notifications = List(mkNotificationWithStreamer("u1"), mkNotificationWithStreamer("u2"))
-    val result = StreamLogic.applyIgnoredStreamers(notifications, Set("u99"))
+    val result        = StreamLogic.applyIgnoredStreamers(notifications, Set("u99"))
     assertEquals(result.size, 2)
   }
 
@@ -265,51 +308,89 @@ class StreamLogicSpec extends FunSuite:
   private val byCategoryId = Map(
     "game1" -> List(game1Notif),
     "game2" -> List(game2Notif),
-    "game3" -> List(game3Notif)
+    "game3" -> List(game3Notif),
   )
 
   test("filteredNotificationsForUser: returns notifications only for followed categories") {
     val followedMap = Map("alice" -> Set("game1", "game3"))
-    val result = StreamLogic.filteredNotificationsForUser("alice", byCategoryId, followedMap, Map.empty, Map.empty)
+    val result      = StreamLogic.filteredNotificationsForUser(
+      "alice",
+      byCategoryId,
+      followedMap,
+      Map.empty,
+      Map.empty,
+    )
     assertEquals(result.map(_.categoryId).toSet, Set("game1", "game3"))
   }
 
   test("filteredNotificationsForUser: returns empty when user follows no categories") {
     val followedMap = Map("alice" -> Set.empty[String])
-    val result = StreamLogic.filteredNotificationsForUser("alice", byCategoryId, followedMap, Map.empty, Map.empty)
+    val result      = StreamLogic.filteredNotificationsForUser(
+      "alice",
+      byCategoryId,
+      followedMap,
+      Map.empty,
+      Map.empty,
+    )
     assertEquals(result, Nil)
   }
 
   test("filteredNotificationsForUser: returns empty when user is not in followedMap") {
-    val result = StreamLogic.filteredNotificationsForUser("unknown", byCategoryId, Map.empty, Map.empty, Map.empty)
+    val result = StreamLogic.filteredNotificationsForUser(
+      "unknown",
+      byCategoryId,
+      Map.empty,
+      Map.empty,
+      Map.empty,
+    )
     assertEquals(result, Nil)
   }
 
   test("filteredNotificationsForUser: applies tag filters") {
     val followedMap = Map("alice" -> Set("game1", "game2", "game3"))
-    val filtersMap = Map("alice" -> List(TagFilter("include", "english")))
-    val result = StreamLogic.filteredNotificationsForUser("alice", byCategoryId, followedMap, filtersMap, Map.empty)
+    val filtersMap  = Map("alice" -> List(TagFilter("include", "english")))
+    val result      = StreamLogic.filteredNotificationsForUser(
+      "alice",
+      byCategoryId,
+      followedMap,
+      filtersMap,
+      Map.empty,
+    )
     assertEquals(result.map(_.categoryId).toSet, Set("game1", "game3"))
   }
 
   test("filteredNotificationsForUser: applies ignored streamers") {
     val n1 = StreamNotification("game1", "G1", "u1", "login1", "Name1", "Title", 100, "thumb.jpg")
     val n2 = StreamNotification("game1", "G1", "u2", "login2", "Name2", "Title", 200, "thumb.jpg")
-    val byCategory = Map("game1" -> List(n1, n2))
+    val byCategory  = Map("game1" -> List(n1, n2))
     val followedMap = Map("alice" -> Set("game1"))
-    val ignoredMap = Map("alice" -> Set("u1"))
-    val result = StreamLogic.filteredNotificationsForUser("alice", byCategory, followedMap, Map.empty, ignoredMap)
+    val ignoredMap  = Map("alice" -> Set("u1"))
+    val result      = StreamLogic.filteredNotificationsForUser(
+      "alice",
+      byCategory,
+      followedMap,
+      Map.empty,
+      ignoredMap,
+    )
     assertEquals(result.map(_.streamerId), List("u2"))
   }
 
-  test("filteredNotificationsForUser: applies category filter, tag filter, and ignored streamer together") {
+  test(
+    "filteredNotificationsForUser: applies category filter, tag filter, and ignored streamer together",
+  ) {
     val n1 = StreamNotification("game1", "G1", "u1", "l1", "N1", "T", 100, "t.jpg", List("English"))
     val n2 = StreamNotification("game1", "G1", "u2", "l2", "N2", "T", 200, "t.jpg", List("English"))
     val n3 = StreamNotification("game2", "G2", "u3", "l3", "N3", "T", 300, "t.jpg", List("Spanish"))
-    val byCategory = Map("game1" -> List(n1, n2), "game2" -> List(n3))
+    val byCategory  = Map("game1" -> List(n1, n2), "game2" -> List(n3))
     val followedMap = Map("alice" -> Set("game1", "game2"))
-    val filtersMap = Map("alice" -> List(TagFilter("include", "english")))
-    val ignoredMap = Map("alice" -> Set("u1"))
-    val result = StreamLogic.filteredNotificationsForUser("alice", byCategory, followedMap, filtersMap, ignoredMap)
+    val filtersMap  = Map("alice" -> List(TagFilter("include", "english")))
+    val ignoredMap  = Map("alice" -> Set("u1"))
+    val result      = StreamLogic.filteredNotificationsForUser(
+      "alice",
+      byCategory,
+      followedMap,
+      filtersMap,
+      ignoredMap,
+    )
     assertEquals(result.map(_.streamerId), List("u2"))
   }

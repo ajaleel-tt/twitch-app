@@ -9,15 +9,18 @@ import org.http4s.implicits.*
 import scala.concurrent.duration.*
 
 class TopGamesPoller(
-    clientId: String,
-    clientSecret: String,
-    client: Client[IO],
-    topGamesRepo: TopGamesRepository,
-    appToken: Ref[IO, Option[String]],
-    settings: AppSettings
+  clientId: String,
+  clientSecret: String,
+  client: Client[IO],
+  topGamesRepo: TopGamesRepository,
+  appToken: Ref[IO, Option[String]],
+  settings: AppSettings,
 ) extends TwitchPoller(clientId, clientSecret, client, appToken):
 
-  private def fetchTopGamesPage(token: String, cursor: Option[String]): IO[TwitchSearchCategoriesResponse] =
+  private def fetchTopGamesPage(
+    token: String,
+    cursor: Option[String],
+  ): IO[TwitchSearchCategoriesResponse] =
     val baseUri = uri"https://api.twitch.tv/helix/games/top"
       .withQueryParam("first", "100")
     client.expect[TwitchSearchCategoriesResponse](buildAuthedRequest(baseUri, token, cursor))
@@ -46,22 +49,26 @@ class TopGamesPoller(
     yield ()
 
   def start: IO[Nothing] =
-    IO.println(s"TopGamesPoller: starting (polling every ${settings.topGamesPollInterval.toSeconds}s)") *>
+    IO.println(
+      s"TopGamesPoller: starting (polling every ${settings.topGamesPollInterval.toSeconds}s)",
+    ) *>
       pollOnce.handleErrorWith(e =>
         IO.println(s"TopGamesPoller first poll failed: $e, retrying in 30s") *>
           IO.sleep(30.seconds) *>
-          pollOnce.handleErrorWith(e2 => IO.println(s"TopGamesPoller retry also failed: $e2"))
+          pollOnce.handleErrorWith(e2 => IO.println(s"TopGamesPoller retry also failed: $e2")),
       ) *>
-      (IO.sleep(settings.topGamesPollInterval) *> pollOnce.handleErrorWith(e => IO.println(s"TopGamesPoller error: $e"))).foreverM
+      (IO.sleep(settings.topGamesPollInterval) *> pollOnce.handleErrorWith(e =>
+        IO.println(s"TopGamesPoller error: $e"),
+      )).foreverM
 
 object TopGamesPoller:
+
   def make(
-      clientId: String,
-      clientSecret: String,
-      client: Client[IO],
-      topGamesRepo: TopGamesRepository,
-      settings: AppSettings
+    clientId: String,
+    clientSecret: String,
+    client: Client[IO],
+    topGamesRepo: TopGamesRepository,
+    settings: AppSettings,
   ): IO[TopGamesPoller] =
-    for
-      tokenRef <- IO.ref(Option.empty[String])
+    for tokenRef <- IO.ref(Option.empty[String])
     yield new TopGamesPoller(clientId, clientSecret, client, topGamesRepo, tokenRef, settings)

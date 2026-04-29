@@ -11,7 +11,7 @@ import com.zaxxer.hikari.HikariConfig
 
 object TwitchServer extends IOApp.Simple:
 
-  private val config = ServerConfig.fromEnv
+  private val config   = ServerConfig.fromEnv
   private val settings = AppSettings.load
 
   def run: IO[Unit] =
@@ -45,7 +45,7 @@ object TwitchServer extends IOApp.Simple:
                 .withPort(port)
                 .withHttpApp(app.corsApp)
                 .build
-                .useForever
+                .useForever,
           ).parTupled
         yield ()
       }

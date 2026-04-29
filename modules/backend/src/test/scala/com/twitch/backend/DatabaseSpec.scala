@@ -8,10 +8,10 @@ import com.twitch.core.*
 class DatabaseSpec extends CatsEffectSuite:
 
   case class Repos(
-      followRepo: db.FollowRepository,
-      tagFilterRepo: db.TagFilterRepository,
-      userRepo: db.UserRepository,
-      topGamesRepo: db.TopGamesRepository
+    followRepo: db.FollowRepository,
+    tagFilterRepo: db.TagFilterRepository,
+    userRepo: db.UserRepository,
+    topGamesRepo: db.TopGamesRepository,
   )
 
   private val dbFixture = ResourceSuiteLocalFixture(
@@ -20,15 +20,17 @@ class DatabaseSpec extends CatsEffectSuite:
       ec <- Resource.eval(IO.executionContext)
       xa <- H2Transactor.newH2Transactor[IO](
         "jdbc:h2:mem:test;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE",
-        "sa", "", ec
+        "sa",
+        "",
+        ec,
       )
       _ <- Resource.eval(db.Schema.initDb(xa, SqlDialect.H2))
     yield Repos(
       new db.FollowRepository(xa, SqlDialect.H2),
       new db.TagFilterRepository(xa, SqlDialect.H2),
       new db.UserRepository(xa),
-      new db.TopGamesRepository(xa)
-    )
+      new db.TopGamesRepository(xa),
+    ),
   )
 
   override def munitFixtures = List(dbFixture)
@@ -39,15 +41,15 @@ class DatabaseSpec extends CatsEffectSuite:
 
   test("addTagFilter normalizes tag to lowercase") {
     for
-      _ <- repos.tagFilterRepo.addTagFilter("user1", "include", "ENGLISH")
+      _       <- repos.tagFilterRepo.addTagFilter("user1", "include", "ENGLISH")
       filters <- repos.tagFilterRepo.getTagFilters("user1")
     yield assertEquals(filters.map(_.tag), List("english"))
   }
 
   test("addTagFilter and getTagFilters round-trip") {
     for
-      _ <- repos.tagFilterRepo.addTagFilter("user2", "include", "english")
-      _ <- repos.tagFilterRepo.addTagFilter("user2", "exclude", "speedrun")
+      _       <- repos.tagFilterRepo.addTagFilter("user2", "include", "english")
+      _       <- repos.tagFilterRepo.addTagFilter("user2", "exclude", "speedrun")
       filters <- repos.tagFilterRepo.getTagFilters("user2")
     yield {
       assertEquals(filters.size, 2)
@@ -58,16 +60,16 @@ class DatabaseSpec extends CatsEffectSuite:
 
   test("addTagFilter is idempotent (no duplicate)") {
     for
-      _ <- repos.tagFilterRepo.addTagFilter("user3", "include", "english")
-      _ <- repos.tagFilterRepo.addTagFilter("user3", "include", "english")
+      _       <- repos.tagFilterRepo.addTagFilter("user3", "include", "english")
+      _       <- repos.tagFilterRepo.addTagFilter("user3", "include", "english")
       filters <- repos.tagFilterRepo.getTagFilters("user3")
     yield assertEquals(filters.count(_.tag == "english"), 1)
   }
 
   test("removeTagFilter removes existing filter") {
     for
-      _ <- repos.tagFilterRepo.addTagFilter("user4", "include", "english")
-      _ <- repos.tagFilterRepo.removeTagFilter("user4", "include", "english")
+      _       <- repos.tagFilterRepo.addTagFilter("user4", "include", "english")
+      _       <- repos.tagFilterRepo.removeTagFilter("user4", "include", "english")
       filters <- repos.tagFilterRepo.getTagFilters("user4")
     yield assertEquals(filters.size, 0)
   }
@@ -82,7 +84,7 @@ class DatabaseSpec extends CatsEffectSuite:
 
   test("follow and getFollowed round-trip") {
     for
-      _ <- repos.followRepo.follow("user6", testCategory)
+      _        <- repos.followRepo.follow("user6", testCategory)
       followed <- repos.followRepo.getFollowed("user6")
     yield {
       assertEquals(followed.size, 1)
@@ -93,16 +95,16 @@ class DatabaseSpec extends CatsEffectSuite:
 
   test("unfollow removes category") {
     for
-      _ <- repos.followRepo.follow("user7", testCategory)
-      _ <- repos.followRepo.unfollow("user7", "cat1")
+      _        <- repos.followRepo.follow("user7", testCategory)
+      _        <- repos.followRepo.unfollow("user7", "cat1")
       followed <- repos.followRepo.getFollowed("user7")
     yield assertEquals(followed.size, 0)
   }
 
   test("getAllFollowedCategories deduplicates across users") {
     for
-      _ <- repos.followRepo.follow("user8", testCategory)
-      _ <- repos.followRepo.follow("user9", testCategory)
+      _   <- repos.followRepo.follow("user8", testCategory)
+      _   <- repos.followRepo.follow("user9", testCategory)
       all <- repos.followRepo.getAllFollowedCategories
     yield {
       val matching = all.filter(_.id == "cat1")
@@ -114,7 +116,9 @@ class DatabaseSpec extends CatsEffectSuite:
 
   test("insertUser and findUser round-trip") {
     for
-      _ <- repos.userRepo.insertUser("newuser1", "testlogin1", "TestUser1", Some("test@example.com"))
+      _ <- repos
+        .userRepo
+        .insertUser("newuser1", "testlogin1", "TestUser1", Some("test@example.com"))
       found <- repos.userRepo.findUser("newuser1")
     yield {
       assert(found.isDefined)
@@ -127,25 +131,30 @@ class DatabaseSpec extends CatsEffectSuite:
   }
 
   test("findUser returns None for unknown user") {
-    for
-      found <- repos.userRepo.findUser("nonexistent")
+    for found <- repos.userRepo.findUser("nonexistent")
     yield assert(found.isEmpty)
   }
 
   test("markWelcomeEmailSent updates flag") {
     for
-      _ <- repos.userRepo.insertUser("newuser2", "testlogin2", "TestUser2", Some("test2@example.com"))
-      _ <- repos.userRepo.markWelcomeEmailSent("newuser2")
+      _ <- repos
+        .userRepo
+        .insertUser("newuser2", "testlogin2", "TestUser2", Some("test2@example.com"))
+      _     <- repos.userRepo.markWelcomeEmailSent("newuser2")
       found <- repos.userRepo.findUser("newuser2")
     yield assertEquals(found.get.welcomeEmailSent, true)
   }
 
   test("updateLastLogin updates timestamp") {
     for
-      _ <- repos.userRepo.insertUser("newuser3", "testlogin3", "TestUser3", Some("test3@example.com"))
+      _ <- repos
+        .userRepo
+        .insertUser("newuser3", "testlogin3", "TestUser3", Some("test3@example.com"))
       before <- repos.userRepo.findUser("newuser3")
-      _ <- IO.sleep(scala.concurrent.duration.Duration(10, "ms"))
-      _ <- repos.userRepo.updateLastLogin("newuser3", "testlogin3", "TestUser3", Some("test3@example.com"))
+      _      <- IO.sleep(scala.concurrent.duration.Duration(10, "ms"))
+      _      <- repos
+        .userRepo
+        .updateLastLogin("newuser3", "testlogin3", "TestUser3", Some("test3@example.com"))
       after <- repos.userRepo.findUser("newuser3")
     yield assert(after.get.lastLoginAt >= before.get.lastLoginAt)
   }
@@ -153,7 +162,9 @@ class DatabaseSpec extends CatsEffectSuite:
   test("updateLastLogin updates email via COALESCE") {
     for
       _ <- repos.userRepo.insertUser("newuser4", "testlogin4", "TestUser4", None)
-      _ <- repos.userRepo.updateLastLogin("newuser4", "testlogin4", "TestUser4", Some("new@example.com"))
+      _ <- repos
+        .userRepo
+        .updateLastLogin("newuser4", "testlogin4", "TestUser4", Some("new@example.com"))
       found <- repos.userRepo.findUser("newuser4")
     yield assertEquals(found.get.email, Some("new@example.com"))
   }
@@ -165,17 +176,17 @@ class DatabaseSpec extends CatsEffectSuite:
 
   test("getUsersFollowingCategories returns users following any of the given categories") {
     for
-      _ <- repos.followRepo.follow("fanout1", catA)
-      _ <- repos.followRepo.follow("fanout2", catA)
-      _ <- repos.followRepo.follow("fanout3", catB)
+      _      <- repos.followRepo.follow("fanout1", catA)
+      _      <- repos.followRepo.follow("fanout2", catA)
+      _      <- repos.followRepo.follow("fanout3", catB)
       result <- repos.followRepo.getUsersFollowingCategories(Set("catA", "catB"))
     yield assertEquals(result, Set("fanout1", "fanout2", "fanout3"))
   }
 
   test("getUsersFollowingCategories excludes users not following any given category") {
     for
-      _ <- repos.followRepo.follow("fanout4", catA)
-      _ <- repos.followRepo.follow("fanout5", catB)
+      _      <- repos.followRepo.follow("fanout4", catA)
+      _      <- repos.followRepo.follow("fanout5", catB)
       result <- repos.followRepo.getUsersFollowingCategories(Set("catA"))
     yield {
       assert(result.contains("fanout4"))
@@ -184,21 +195,19 @@ class DatabaseSpec extends CatsEffectSuite:
   }
 
   test("getUsersFollowingCategories returns empty set for empty input") {
-    for
-      result <- repos.followRepo.getUsersFollowingCategories(Set.empty)
+    for result <- repos.followRepo.getUsersFollowingCategories(Set.empty)
     yield assert(result.isEmpty)
   }
 
   test("getUsersFollowingCategories returns empty set for unknown category") {
-    for
-      result <- repos.followRepo.getUsersFollowingCategories(Set("nonexistent_cat"))
+    for result <- repos.followRepo.getUsersFollowingCategories(Set("nonexistent_cat"))
     yield assert(result.isEmpty)
   }
 
   test("getUsersFollowingCategories deduplicates users following multiple matched categories") {
     for
-      _ <- repos.followRepo.follow("fanout6", catA)
-      _ <- repos.followRepo.follow("fanout6", catB)
+      _      <- repos.followRepo.follow("fanout6", catA)
+      _      <- repos.followRepo.follow("fanout6", catB)
       result <- repos.followRepo.getUsersFollowingCategories(Set("catA", "catB"))
     yield {
       assert(result.contains("fanout6"))
