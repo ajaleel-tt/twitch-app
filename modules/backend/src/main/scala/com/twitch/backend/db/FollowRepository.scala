@@ -33,7 +33,10 @@ class FollowRepository(xa: Transactor[IO], dialect: SqlDialect):
 
   def unfollow(userId: String, categoryId: String): IO[Unit] =
     sql"DELETE FROM followed_categories WHERE user_id = $userId AND category_id = $categoryId"
-      .update.run.transact(xa).void
+      .update
+      .run
+      .transact(xa)
+      .void
 
   def getAllFollowedCategories: IO[List[TwitchCategory]] =
     sql"SELECT DISTINCT category_id, name, box_art_url FROM followed_categories"

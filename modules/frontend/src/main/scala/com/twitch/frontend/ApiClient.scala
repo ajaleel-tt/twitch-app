@@ -6,7 +6,7 @@ import scala.concurrent.duration.*
 import io.circe.parser.decode
 import io.circe.syntax.*
 import org.http4s.dom.FetchClientBuilder
-import org.http4s.{Request as Http4sRequest, Method, Uri, MediaType}
+import org.http4s.{MediaType, Method, Request as Http4sRequest, Uri}
 import org.http4s.headers.`Content-Type`
 import org.scalajs.dom
 import org.scalajs.dom.RequestCredentials
@@ -45,9 +45,12 @@ object ApiClient:
       case Left(_)     => Nil
     }
 
-  def searchCategories(query: String, after: Option[String] = None): IO[Option[TwitchSearchCategoriesResponse]] =
+  def searchCategories(
+    query: String,
+    after: Option[String] = None,
+  ): IO[Option[TwitchSearchCategoriesResponse]] =
     val baseUri = Uri.unsafeFromString("/api/search/categories").withQueryParam("query", query)
-    val uri = after.fold(baseUri)(c => baseUri.withQueryParam("after", c))
+    val uri     = after.fold(baseUri)(c => baseUri.withQueryParam("after", c))
     httpClient.expect[String](uri).attempt.map {
       case Right(body) => decode[TwitchSearchCategoriesResponse](body).toOption
       case Left(_)     => None
@@ -104,9 +107,15 @@ object ApiClient:
       case Left(_)     => Nil
     }
 
-  def addIgnoredStreamer(streamerId: String, streamerLogin: String, streamerName: String): IO[Unit] =
+  def addIgnoredStreamer(
+    streamerId: String,
+    streamerLogin: String,
+    streamerName: String,
+  ): IO[Unit] =
     val req = Http4sRequest[IO](Method.POST, Uri.unsafeFromString("/api/ignored-streamers/add"))
-      .withEntity(AddIgnoredStreamerRequest(streamerId, streamerLogin, streamerName).asJson.noSpaces)
+      .withEntity(
+        AddIgnoredStreamerRequest(streamerId, streamerLogin, streamerName).asJson.noSpaces,
+      )
       .withContentType(`Content-Type`(MediaType.application.json))
     httpClient.expect[String](req).void
 
@@ -134,7 +143,7 @@ object ApiClient:
       .handleErrorWith { e =>
         Stream.eval(
           IO.println(s"SSE connection error: $e, reconnecting in ${Defaults.SseReconnectDelay}...")
-            *> IO.sleep(Defaults.SseReconnectDelay)
+            *> IO.sleep(Defaults.SseReconnectDelay),
         ) >> sseStream.evalMap(onNotification)
       }
       .compile
@@ -145,37 +154,40 @@ object ApiClient:
     Stream.resource(sseResource).flatMap(nextEvent => Stream.repeatEval(nextEvent))
 
   private def sseResource: Resource[IO, IO[StreamNotification]] =
-    Resource.make(IO {
-      // Mutable state is safe here — Scala.js is single-threaded
-      var waiting: (Either[Throwable, StreamNotification] => Unit) | Null = null
-      val buffer = scala.collection.mutable.Queue[StreamNotification]()
+    Resource
+      .make(IO {
+        // Mutable state is safe here — Scala.js is single-threaded
+        var waiting: (Either[Throwable, StreamNotification] => Unit) | Null = null
+        val buffer = scala.collection.mutable.Queue[StreamNotification]()
 
-      val es = new dom.EventSource("/api/notifications/stream")
-      es.addEventListener("stream-live", (e: dom.MessageEvent) => {
-        decode[StreamNotification](e.data.asInstanceOf[String]).foreach { n =>
+        val es = new dom.EventSource("/api/notifications/stream")
+        es.addEventListener(
+          "stream-live",
+          (e: dom.MessageEvent) =>
+            decode[StreamNotification](e.data.asInstanceOf[String]).foreach { n =>
+              if (waiting != null) {
+                val cb = waiting
+                waiting = null
+                cb(Right(n))
+              } else {
+                buffer.enqueue(n)
+              }
+            },
+        )
+        es.onerror = (_: dom.Event) =>
           if (waiting != null) {
             val cb = waiting
             waiting = null
-            cb(Right(n))
-          } else {
-            buffer.enqueue(n)
+            cb(Left(new RuntimeException("SSE connection error")))
           }
-        }
-      })
-      es.onerror = (_: dom.Event) => {
-        if (waiting != null) {
-          val cb = waiting
-          waiting = null
-          cb(Left(new RuntimeException("SSE connection error")))
-        }
-      }
 
-      val nextEvent: IO[StreamNotification] = IO.async_[StreamNotification] { cb =>
-        if (buffer.nonEmpty)
-          cb(Right(buffer.dequeue()))
-        else
-          waiting = cb
-      }
+        val nextEvent: IO[StreamNotification] = IO.async_[StreamNotification] { cb =>
+          if (buffer.nonEmpty)
+            cb(Right(buffer.dequeue()))
+          else
+            waiting = cb
+        }
 
-      (es, nextEvent)
-    })(pair => IO(pair._1.close())).map(_._2)
+        (es, nextEvent)
+      })(pair => IO(pair._1.close()))
+      .map(_._2)

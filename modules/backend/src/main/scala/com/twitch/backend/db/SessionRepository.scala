@@ -9,13 +9,13 @@ import java.time.Instant
 class SessionRepository(xa: Transactor[IO]):
 
   def createSession(
-      sessionId: String,
-      user: TwitchUser,
-      accessToken: String,
-      refreshToken: Option[String],
-      tokenExpiresAt: Option[Instant]
+    sessionId: String,
+    user: TwitchUser,
+    accessToken: String,
+    refreshToken: Option[String],
+    tokenExpiresAt: Option[Instant],
   ): IO[Unit] =
-    val now = Instant.now().getEpochSecond
+    val now       = Instant.now().getEpochSecond
     val expiresAt = tokenExpiresAt.map(_.getEpochSecond)
     sql"""
       INSERT INTO sessions (session_id, user_id, user_login, display_name, profile_image_url, access_token, refresh_token, token_expires_at, created_at)
@@ -28,7 +28,12 @@ class SessionRepository(xa: Transactor[IO]):
       FROM sessions WHERE session_id = $sessionId
     """.query[SessionRow].option.transact(xa)
 
-  def updateSessionToken(sessionId: String, accessToken: String, refreshToken: Option[String], tokenExpiresAt: Option[Instant]): IO[Unit] =
+  def updateSessionToken(
+    sessionId: String,
+    accessToken: String,
+    refreshToken: Option[String],
+    tokenExpiresAt: Option[Instant],
+  ): IO[Unit] =
     val expiresAt = tokenExpiresAt.map(_.getEpochSecond)
     sql"""
       UPDATE sessions SET access_token = $accessToken, refresh_token = $refreshToken, token_expires_at = $expiresAt
@@ -37,17 +42,20 @@ class SessionRepository(xa: Transactor[IO]):
 
   def deleteSession(sessionId: String): IO[Unit] =
     sql"DELETE FROM sessions WHERE session_id = $sessionId"
-      .update.run.transact(xa).void
+      .update
+      .run
+      .transact(xa)
+      .void
 
 case class SessionRow(
-    sessionId: String,
-    userId: String,
-    userLogin: String,
-    displayName: String,
-    profileImageUrl: String,
-    accessToken: String,
-    refreshToken: Option[String],
-    tokenExpiresAt: Option[Long],
-    createdAt: Long
+  sessionId: String,
+  userId: String,
+  userLogin: String,
+  displayName: String,
+  profileImageUrl: String,
+  accessToken: String,
+  refreshToken: Option[String],
+  tokenExpiresAt: Option[Long],
+  createdAt: Long,
 ):
   def toUser: TwitchUser = TwitchUser(userId, userLogin, displayName, profileImageUrl)

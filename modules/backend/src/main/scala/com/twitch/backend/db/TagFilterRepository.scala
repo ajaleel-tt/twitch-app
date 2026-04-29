@@ -16,7 +16,7 @@ class TagFilterRepository(xa: Transactor[IO], dialect: SqlDialect):
 
   def addTagFilter(userId: String, filterType: String, tag: String): IO[Unit] =
     val normalizedTag = tag.trim.toLowerCase
-    val stmt = dialect match
+    val stmt          = dialect match
       case SqlDialect.Postgres =>
         sql"""
           INSERT INTO tag_filters (user_id, filter_type, tag)
@@ -34,4 +34,7 @@ class TagFilterRepository(xa: Transactor[IO], dialect: SqlDialect):
   def removeTagFilter(userId: String, filterType: String, tag: String): IO[Unit] =
     val normalizedTag = tag.trim.toLowerCase
     sql"DELETE FROM tag_filters WHERE user_id = $userId AND filter_type = $filterType AND tag = $normalizedTag"
-      .update.run.transact(xa).void
+      .update
+      .run
+      .transact(xa)
+      .void

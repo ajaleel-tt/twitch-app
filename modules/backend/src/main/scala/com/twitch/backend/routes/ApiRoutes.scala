@@ -8,26 +8,26 @@ import org.http4s.circe.CirceEntityEncoder.*
 import cats.effect.std.Queue
 import io.circe.syntax.*
 import com.twitch.core.*
-import com.twitch.backend.{TwitchApi, Validation, AppSettings}
+import com.twitch.backend.{AppSettings, TwitchApi, Validation}
 import com.twitch.backend.auth.SessionManager
 import com.twitch.backend.db.*
 
 class ApiRoutes(
-    clientId: String,
-    sessionManager: SessionManager,
-    twitchApi: TwitchApi,
-    followRepo: FollowRepository,
-    tagFilterRepo: TagFilterRepository,
-    ignoredStreamerRepo: IgnoredStreamerRepository,
-    sessionRepo: SessionRepository,
-    pushRepo: PushSubscriptionRepository,
-    topGamesRepo: TopGamesRepository,
-    notificationQueues: Ref[IO, Map[String, (String, Queue[IO, StreamNotification])]],
-    settings: AppSettings
+  clientId: String,
+  sessionManager: SessionManager,
+  twitchApi: TwitchApi,
+  followRepo: FollowRepository,
+  tagFilterRepo: TagFilterRepository,
+  ignoredStreamerRepo: IgnoredStreamerRepository,
+  sessionRepo: SessionRepository,
+  pushRepo: PushSubscriptionRepository,
+  topGamesRepo: TopGamesRepository,
+  notificationQueues: Ref[IO, Map[String, (String, Queue[IO, StreamNotification])]],
+  settings: AppSettings,
 ):
 
   private object SearchQueryParamMatcher extends QueryParamDecoderMatcher[String]("query")
-  private object AfterQueryParamMatcher extends OptionalQueryParamDecoderMatcher[String]("after")
+  private object AfterQueryParamMatcher  extends OptionalQueryParamDecoderMatcher[String]("after")
 
   def routes: HttpRoutes[IO] = HttpRoutes.of[IO] {
     case GET -> Root / "config" =>
@@ -57,32 +57,42 @@ class ApiRoutes(
           followRepo.unfollow(data.user.id, categoryId) *> Ok("Unfollowed")
         case None => Forbidden("Not logged in")
       }
-    case req @ GET -> Root / "search" / "categories" :? SearchQueryParamMatcher(query) +& AfterQueryParamMatcher(after) =>
+    case req @ GET -> Root / "search" / "categories" :? SearchQueryParamMatcher(
+          query,
+        ) +& AfterQueryParamMatcher(after) =>
       sessionManager.getSession(req).flatMap {
         case Some(data) =>
           sessionManager.refreshTokenIfNeeded(data).flatMap { refreshed =>
-            twitchApi.searchCategories(query, after, refreshed.accessToken, settings.searchPageSize).flatMap(Ok(_))
+            twitchApi
+              .searchCategories(query, after, refreshed.accessToken, settings.searchPageSize)
+              .flatMap(Ok(_))
           }
         case None => Forbidden("Not logged in")
       }
-    case req @ GET -> Root / "search" / "channels" :? SearchQueryParamMatcher(query) +& AfterQueryParamMatcher(after) =>
+    case req @ GET -> Root / "search" / "channels" :? SearchQueryParamMatcher(
+          query,
+        ) +& AfterQueryParamMatcher(after) =>
       sessionManager.getSession(req).flatMap {
         case Some(data) =>
           sessionManager.refreshTokenIfNeeded(data).flatMap { refreshed =>
-            twitchApi.searchChannels(query, after, refreshed.accessToken, settings.searchPageSize).flatMap(Ok(_))
+            twitchApi
+              .searchChannels(query, after, refreshed.accessToken, settings.searchPageSize)
+              .flatMap(Ok(_))
           }
         case None => Forbidden("Not logged in")
       }
     case req @ POST -> Root / "logout" =>
       val sessionId = req.cookies.find(_.name == "session_id").map(_.content)
       for {
-        _ <- sessionId.fold(IO.unit)(id => sessionRepo.deleteSession(id))
+        _   <- sessionId.fold(IO.unit)(id => sessionRepo.deleteSession(id))
         res <- Ok("Logged out").map(_.removeCookie("session_id"))
       } yield res
     case req @ GET -> Root / "tag-filters" =>
       sessionManager.getSession(req).flatMap {
         case Some(data) =>
-          tagFilterRepo.getTagFilters(data.user.id).flatMap(filters => Ok(TagFiltersResponse(filters)))
+          tagFilterRepo
+            .getTagFilters(data.user.id)
+            .flatMap(filters => Ok(TagFiltersResponse(filters)))
         case None => Forbidden("Not logged in")
       }
     case req @ POST -> Root / "tag-filters" / "add" =>
@@ -90,7 +100,8 @@ class ApiRoutes(
         sessionManager.getSession(req).flatMap {
           case Some(data) =>
             (Validation.validateTag(body.tag), Validation.validateFilterType(body.filterType)) match
-              case (Right(tag), Right(ft)) => tagFilterRepo.addTagFilter(data.user.id, ft, tag) *> Ok("Filter added")
+              case (Right(tag), Right(ft)) =>
+                tagFilterRepo.addTagFilter(data.user.id, ft, tag) *> Ok("Filter added")
               case (Left(err), _) => BadRequest(err)
               case (_, Left(err)) => BadRequest(err)
           case None => Forbidden("Not logged in")
@@ -100,14 +111,18 @@ class ApiRoutes(
       req.as[AddTagFilterRequest].flatMap { body =>
         sessionManager.getSession(req).flatMap {
           case Some(data) =>
-            tagFilterRepo.removeTagFilter(data.user.id, body.filterType, body.tag) *> Ok("Filter removed")
+            tagFilterRepo.removeTagFilter(data.user.id, body.filterType, body.tag) *> Ok(
+              "Filter removed",
+            )
           case None => Forbidden("Not logged in")
         }
       }
     case req @ GET -> Root / "ignored-streamers" =>
       sessionManager.getSession(req).flatMap {
         case Some(data) =>
-          ignoredStreamerRepo.getIgnoredStreamers(data.user.id).flatMap(streamers => Ok(IgnoredStreamersResponse(streamers)))
+          ignoredStreamerRepo
+            .getIgnoredStreamers(data.user.id)
+            .flatMap(streamers => Ok(IgnoredStreamersResponse(streamers)))
         case None => Forbidden("Not logged in")
       }
     case req @ POST -> Root / "ignored-streamers" / "add" =>
@@ -115,7 +130,13 @@ class ApiRoutes(
         sessionManager.getSession(req).flatMap {
           case Some(data) =>
             Validation.validateNonEmpty(body.streamerId, "streamerId") match
-              case Right(_) => ignoredStreamerRepo.addIgnoredStreamer(data.user.id, body.streamerId, body.streamerLogin, body.streamerName) *> Ok("Streamer ignored")
+              case Right(_) =>
+                ignoredStreamerRepo.addIgnoredStreamer(
+                  data.user.id,
+                  body.streamerId,
+                  body.streamerLogin,
+                  body.streamerName,
+                ) *> Ok("Streamer ignored")
               case Left(err) => BadRequest(err)
           case None => Forbidden("Not logged in")
         }
@@ -124,7 +145,8 @@ class ApiRoutes(
       req.as[RemoveIgnoredStreamerRequest].flatMap { body =>
         sessionManager.getSession(req).flatMap {
           case Some(data) =>
-            ignoredStreamerRepo.removeIgnoredStreamer(data.user.id, body.streamerId) *> Ok("Streamer unignored")
+            ignoredStreamerRepo
+              .removeIgnoredStreamer(data.user.id, body.streamerId) *> Ok("Streamer unignored")
           case None => Forbidden("Not logged in")
         }
       }
@@ -133,7 +155,10 @@ class ApiRoutes(
         sessionManager.getSession(req).flatMap {
           case Some(data) =>
             Validation.validatePlatform(body.platform) match
-              case Right(platform) => pushRepo.savePushSubscription(data.user.id, body.token, platform) *> Ok("Registered")
+              case Right(platform) =>
+                pushRepo.savePushSubscription(data.user.id, body.token, platform) *> Ok(
+                  "Registered",
+                )
               case Left(err) => BadRequest(err)
           case None => Forbidden("Not logged in")
         }
@@ -153,13 +178,16 @@ class ApiRoutes(
       }
     case req @ GET -> Root / "notifications" / "stream" =>
       sessionManager.getSession(req).flatMap {
-        case None => Forbidden("Not logged in")
+        case None       => Forbidden("Not logged in")
         case Some(data) =>
-          val sessionId = req.cookies.find(_.name == "session_id").map(_.content).getOrElse("unknown")
+          val sessionId =
+            req.cookies.find(_.name == "session_id").map(_.content).getOrElse("unknown")
           Queue.unbounded[IO, StreamNotification].flatMap { queue =>
             notificationQueues.update(_ + (sessionId -> (data.user.id, queue))) *> {
               val eventStream: fs2.Stream[IO, ServerSentEvent] =
-                fs2.Stream.fromQueueUnterminated(queue)
+                fs2
+                  .Stream
+                  .fromQueueUnterminated(queue)
                   .map { n =>
                     ServerSentEvent(data = Some(n.asJson.noSpaces), eventType = Some("stream-live"))
                   }

@@ -10,8 +10,8 @@ import java.time.Instant
 class PushSubscriptionRepository(xa: Transactor[IO], dialect: SqlDialect):
 
   def savePushSubscription(userId: String, deviceToken: String, platform: String): IO[Unit] =
-    val id = java.util.UUID.randomUUID().toString
-    val now = Instant.now().getEpochSecond
+    val id   = java.util.UUID.randomUUID().toString
+    val now  = Instant.now().getEpochSecond
     val stmt = dialect match
       case SqlDialect.Postgres =>
         sql"""
@@ -29,7 +29,10 @@ class PushSubscriptionRepository(xa: Transactor[IO], dialect: SqlDialect):
 
   def deletePushSubscription(deviceToken: String): IO[Unit] =
     sql"DELETE FROM push_subscriptions WHERE device_token = $deviceToken"
-      .update.run.transact(xa).void
+      .update
+      .run
+      .transact(xa)
+      .void
 
   def getPushSubscriptionsForUsers(userIds: Set[String]): IO[List[PushSubscriptionRow]] =
     if userIds.isEmpty then IO.pure(Nil)
@@ -41,9 +44,9 @@ class PushSubscriptionRepository(xa: Transactor[IO], dialect: SqlDialect):
         .transact(xa)
 
 case class PushSubscriptionRow(
-    id: String,
-    userId: String,
-    deviceToken: String,
-    platform: String,
-    createdAt: Long
+  id: String,
+  userId: String,
+  deviceToken: String,
+  platform: String,
+  createdAt: Long,
 )
