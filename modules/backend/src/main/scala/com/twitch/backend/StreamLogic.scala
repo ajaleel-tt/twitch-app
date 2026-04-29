@@ -37,8 +37,8 @@ object StreamLogic:
     now: Instant,
     recentWindow: FiniteDuration,
   ): (List[TwitchStream], Set[String]) =
-    val recentStreams   = allStreams.filter(recentlyWentLive(_, now, recentWindow))
-    val newStreams      = recentStreams.filter(s => !alreadyNotified.contains(s.id))
+    val recentStreams = allStreams.filter(recentlyWentLive(_, now, recentWindow))
+    val newStreams = recentStreams.filter(s => !alreadyNotified.contains(s.id))
     val updatedNotified = alreadyNotified | allStreams.map(_.id).toSet
     (newStreams, updatedNotified)
 
@@ -47,10 +47,10 @@ object StreamLogic:
     filters: List[TagFilter],
   ): List[StreamNotification] =
     val (includes, excludes) = filters.partition(_.filterType == "include")
-    val includeTags          = includes.map(_.tag.toLowerCase).toSet
-    val excludeTags          = excludes.map(_.tag.toLowerCase).toSet
+    val includeTags = includes.map(_.tag.toLowerCase).toSet
+    val excludeTags = excludes.map(_.tag.toLowerCase).toSet
     notifications.filter { n =>
-      val streamTags    = n.tags.map(_.toLowerCase).toSet
+      val streamTags = n.tags.map(_.toLowerCase).toSet
       val passesInclude = includeTags.isEmpty || streamTags.exists(includeTags.contains)
       val passesExclude = !streamTags.exists(excludeTags.contains)
       passesInclude && passesExclude
@@ -70,7 +70,7 @@ object StreamLogic:
     filtersMap: Map[String, List[TagFilter]],
     ignoredMap: Map[String, Set[String]],
   ): List[StreamNotification] =
-    val userCategoryIds       = followedMap.getOrElse(userId, Set.empty)
+    val userCategoryIds = followedMap.getOrElse(userId, Set.empty)
     val relevantNotifications =
       userCategoryIds.flatMap(id => byCategoryId.getOrElse(id, Nil)).toList
     applyIgnoredStreamers(

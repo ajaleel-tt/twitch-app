@@ -18,8 +18,8 @@ object NotificationsSection:
         cls := "grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4",
         children <-- state.map { m =>
           val followedIds = m.followedCategories.map(_.id).toSet
-          val ignoredIds  = m.ignoredStreamers.streamers.map(_.streamerId).toSet
-          val relevant    = m
+          val ignoredIds = m.ignoredStreamers.streamers.map(_.streamerId).toSet
+          val relevant = m
             .notifications
             .notifications
             .filter(n => followedIds.contains(n.categoryId) && !ignoredIds.contains(n.streamerId))

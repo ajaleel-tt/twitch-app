@@ -32,12 +32,12 @@ object ServerConfig:
           sys.exit(1)
         },
       )
-    val baseUrl  = sys.env.getOrElse("BASE_URL", "http://localhost:8080")
+    val baseUrl = sys.env.getOrElse("BASE_URL", "http://localhost:8080")
     val rawDbUrl = sys
       .env
       .getOrElse("DATABASE_URL", "jdbc:h2:./twitch_app_db;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE")
 
-    val renderPattern             = """^postgres(?:ql)?://([^:]+):([^@]+)@([^/]+)/(.+)$""".r
+    val renderPattern = """^postgres(?:ql)?://([^:]+):([^@]+)@([^/]+)/(.+)$""".r
     val (jdbcUrl, user, password) = rawDbUrl match
       case renderPattern(u, p, host, db) =>
         val hostPort = if host.contains(":") then host else s"$host:5432"

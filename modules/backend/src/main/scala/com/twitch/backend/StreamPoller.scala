@@ -50,7 +50,7 @@ class StreamPoller(
         fetchPaginated[TwitchStream] { (tk, cur) =>
           fetchStreamsPage(tk, categoryId, cur).map { resp =>
             new PaginatedResponse[TwitchStream]:
-              def pageData   = resp.data
+              def pageData = resp.data
               def pageCursor = resp.pagination.flatMap(_.cursor)
           }
         }(token)
@@ -87,7 +87,7 @@ class StreamPoller(
       queues <- notificationQueues.get
       sseUserIds = queues.values.map(_._1).toSet
       (sseFollowed, sseFilters, sseIgnored) <- loadUserPreferences(sseUserIds)
-      _                                     <- queues.values.toList.traverse_ {
+      _ <- queues.values.toList.traverse_ {
         case (userId, queue) =>
           val filtered = StreamLogic.filteredNotificationsForUser(
             userId,
@@ -118,7 +118,7 @@ class StreamPoller(
     filtersMap: Map[String, List[com.twitch.core.TagFilter]],
     ignoredMap: Map[String, Set[String]],
   ): IO[Unit] =
-    val byCategoryId        = notifications.groupBy(_.categoryId)
+    val byCategoryId = notifications.groupBy(_.categoryId)
     val allFollowingUserIds = followedMap.filter {
       case (_, catIds) =>
         catIds.exists(byCategoryId.contains)
@@ -147,7 +147,7 @@ class StreamPoller(
   private def seedOnce: IO[Unit] =
     for
       allCategories <- followRepo.getAllFollowedCategories
-      _             <- IO.whenA(allCategories.nonEmpty) {
+      _ <- IO.whenA(allCategories.nonEmpty) {
         for
           streams <- withTokenRefresh(token => fetchLiveStreams(token, allCategories.map(_.id)))
           liveIds = streams.collect { case s if s.`type` == "live" => s.id }.toSet
@@ -162,10 +162,10 @@ class StreamPoller(
   private def pollOnce: IO[Unit] =
     for
       allCategories <- followRepo.getAllFollowedCategories
-      _             <- IO.whenA(allCategories.nonEmpty) {
+      _ <- IO.whenA(allCategories.nonEmpty) {
         for
           streams <- withTokenRefresh(token => fetchLiveStreams(token, allCategories.map(_.id)))
-          now     <- IO(Instant.now())
+          now <- IO(Instant.now())
           alreadyNotified <- notifiedStreamIds.get
           (newStreams, updatedNotified) = StreamLogic.findNewStreams(
             streams,
@@ -206,7 +206,7 @@ object StreamPoller:
     tagFilterRepo: TagFilterRepository,
   ): IO[StreamPoller] =
     for
-      tokenRef    <- IO.ref(Option.empty[String])
+      tokenRef <- IO.ref(Option.empty[String])
       notifiedRef <- IO.ref(Set.empty[String])
     yield new StreamPoller(
       appToken = tokenRef,

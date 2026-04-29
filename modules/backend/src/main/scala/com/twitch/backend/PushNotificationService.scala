@@ -56,18 +56,18 @@ class PushNotificationService(
         .withEntity(
           UrlForm(
             "grant_type" -> "urn:ietf:params:oauth:grant-type:jwt-bearer",
-            "assertion"  -> jwt,
+            "assertion" -> jwt,
           ),
         )
       client.run(req).use { resp =>
         resp.as[String].flatMap { body =>
           jsonDecode[Json](body) match
             case Right(json) =>
-              val token     = json.hcursor.get[String]("access_token")
+              val token = json.hcursor.get[String]("access_token")
               val expiresIn = json.hcursor.get[Long]("expires_in")
               (token, expiresIn) match
                 case (Right(t), Right(e)) => IO.pure((t, e))
-                case _                    =>
+                case _ =>
                   IO.raiseError(
                     new RuntimeException(s"Failed to parse OAuth token response: $body"),
                   )
@@ -83,15 +83,15 @@ class PushNotificationService(
       "typ" -> "JWT".asJson,
     )
     val claims = Json.obj(
-      "iss"   -> serviceAccountKey.clientEmail.asJson,
+      "iss" -> serviceAccountKey.clientEmail.asJson,
       "scope" -> "https://www.googleapis.com/auth/firebase.messaging".asJson,
-      "aud"   -> "https://oauth2.googleapis.com/token".asJson,
-      "iat"   -> now.getEpochSecond.asJson,
-      "exp"   -> now.plusSeconds(3600).getEpochSecond.asJson,
+      "aud" -> "https://oauth2.googleapis.com/token".asJson,
+      "iat" -> now.getEpochSecond.asJson,
+      "exp" -> now.plusSeconds(3600).getEpochSecond.asJson,
     )
-    val encoder      = Base64.getUrlEncoder.withoutPadding
-    val headerB64    = encoder.encodeToString(header.noSpaces.getBytes("UTF-8"))
-    val claimsB64    = encoder.encodeToString(claims.noSpaces.getBytes("UTF-8"))
+    val encoder = Base64.getUrlEncoder.withoutPadding
+    val headerB64 = encoder.encodeToString(header.noSpaces.getBytes("UTF-8"))
+    val claimsB64 = encoder.encodeToString(claims.noSpaces.getBytes("UTF-8"))
     val signingInput = s"$headerB64.$claimsB64"
 
     val keyBytes = Base64
@@ -103,9 +103,9 @@ class PushNotificationService(
           .replace("-----END PRIVATE KEY-----", "")
           .replaceAll("\\s", ""),
       )
-    val keySpec    = new PKCS8EncodedKeySpec(keyBytes)
+    val keySpec = new PKCS8EncodedKeySpec(keyBytes)
     val privateKey = KeyFactory.getInstance("RSA").generatePrivate(keySpec)
-    val sig        = java.security.Signature.getInstance("SHA256withRSA")
+    val sig = java.security.Signature.getInstance("SHA256withRSA")
     sig.initSign(privateKey)
     sig.update(signingInput.getBytes("UTF-8"))
     val signature = encoder.encodeToString(sig.sign())
@@ -117,15 +117,15 @@ class PushNotificationService(
       .flatMap { accessToken =>
         val payload = Json.obj(
           "message" -> Json.obj(
-            "token"        -> token.asJson,
+            "token" -> token.asJson,
             "notification" -> Json.obj(
               "title" -> s"${notification.streamerName} is live!".asJson,
-              "body"  -> s"Playing ${notification.categoryName}: ${notification.streamTitle}".asJson,
+              "body" -> s"Playing ${notification.categoryName}: ${notification.streamTitle}".asJson,
             ),
             "data" -> Json.obj(
-              "streamerId"    -> notification.streamerId.asJson,
+              "streamerId" -> notification.streamerId.asJson,
               "streamerLogin" -> notification.streamerLogin.asJson,
-              "categoryId"    -> notification.categoryId.asJson,
+              "categoryId" -> notification.categoryId.asJson,
             ),
           ),
         )
@@ -158,7 +158,7 @@ class PushNotificationService(
     notifications: List[StreamNotification],
   ): IO[Unit] =
     val sends = for
-      sub   <- subscriptions
+      sub <- subscriptions
       notif <- notifications
     yield sendToDevice(sub.deviceToken, notif)
     sends.parTraverseN(parallelSends)(identity).void

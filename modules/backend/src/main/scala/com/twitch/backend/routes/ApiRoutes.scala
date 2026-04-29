@@ -48,7 +48,7 @@ class ApiRoutes(
 ):
 
   private object SearchQueryParamMatcher extends QueryParamDecoderMatcher[String]("query")
-  private object AfterQueryParamMatcher  extends OptionalQueryParamDecoderMatcher[String]("after")
+  private object AfterQueryParamMatcher extends OptionalQueryParamDecoderMatcher[String]("after")
 
   def routes: HttpRoutes[IO] = HttpRoutes.of[IO] {
     case GET -> Root / "config" =>
@@ -56,7 +56,7 @@ class ApiRoutes(
     case req @ GET -> Root / "user" =>
       sessionManager.getSession(req).flatMap {
         case Some(data) => Ok(data.user)
-        case None       => NotFound("Not logged in")
+        case None => NotFound("Not logged in")
       }
     case req @ GET -> Root / "followed" =>
       sessionManager.getSession(req).flatMap {
@@ -105,7 +105,7 @@ class ApiRoutes(
     case req @ POST -> Root / "logout" =>
       val sessionId = req.cookies.find(_.name == "session_id").map(_.content)
       for {
-        _   <- sessionId.fold(IO.unit)(id => sessionRepo.deleteSession(id))
+        _ <- sessionId.fold(IO.unit)(id => sessionRepo.deleteSession(id))
         res <- Ok("Logged out").map(_.removeCookie("session_id"))
       } yield res
     case req @ GET -> Root / "tag-filters" =>
@@ -195,11 +195,11 @@ class ApiRoutes(
     case req @ GET -> Root / "top-game-ids" =>
       sessionManager.getSession(req).flatMap {
         case Some(_) => topGamesRepo.getTopGameIds.flatMap(ids => Ok(TopGameIdsResponse(ids)))
-        case None    => Forbidden("Not logged in")
+        case None => Forbidden("Not logged in")
       }
     case req @ GET -> Root / "notifications" / "stream" =>
       sessionManager.getSession(req).flatMap {
-        case None       => Forbidden("Not logged in")
+        case None => Forbidden("Not logged in")
         case Some(data) =>
           val sessionId =
             req.cookies.find(_.name == "session_id").map(_.content).getOrElse("unknown")

@@ -46,6 +46,21 @@ case class ServerConfig(
 
 This applies to: case class fields, function parameters, function arguments, collection literals, and import groups.
 
+### Alignment
+Do not align `=` signs, `->` arrows, or type annotations across consecutive lines. Each line stands on its own.
+
+```scala
+// GOOD
+val followRepo = new db.FollowRepository(xa, config.dialect)
+val tagFilterRepo = new db.TagFilterRepository(xa, config.dialect)
+val userRepo = new db.UserRepository(xa)
+
+// BAD - unnecessary column alignment
+val followRepo    = new db.FollowRepository(xa, config.dialect)
+val tagFilterRepo = new db.TagFilterRepository(xa, config.dialect)
+val userRepo      = new db.UserRepository(xa)
+```
+
 ### Blank Lines
 - One blank line between method definitions.
 - No trailing whitespace on any line.

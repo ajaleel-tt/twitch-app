@@ -38,13 +38,13 @@ object ApiClient:
   def fetchConfig: IO[Option[AppConfig]] =
     httpClient.expect[String](Uri.unsafeFromString("/api/config")).attempt.map {
       case Right(body) => decode[AppConfig](body).toOption
-      case Left(_)     => None
+      case Left(_) => None
     }
 
   def fetchFollowed: IO[List[TwitchCategory]] =
     httpClient.expect[String](Uri.unsafeFromString("/api/followed")).attempt.map {
       case Right(body) => decode[FollowedCategoriesResponse](body).map(_.categories).getOrElse(Nil)
-      case Left(_)     => Nil
+      case Left(_) => Nil
     }
 
   def searchCategories(
@@ -52,16 +52,16 @@ object ApiClient:
     after: Option[String] = None,
   ): IO[Option[TwitchSearchCategoriesResponse]] =
     val baseUri = Uri.unsafeFromString("/api/search/categories").withQueryParam("query", query)
-    val uri     = after.fold(baseUri)(c => baseUri.withQueryParam("after", c))
+    val uri = after.fold(baseUri)(c => baseUri.withQueryParam("after", c))
     httpClient.expect[String](uri).attempt.map {
       case Right(body) => decode[TwitchSearchCategoriesResponse](body).toOption
-      case Left(_)     => None
+      case Left(_) => None
     }
 
   def fetchTopGameIds: IO[Set[String]] =
     httpClient.expect[String](Uri.unsafeFromString("/api/top-game-ids")).attempt.map {
       case Right(body) => decode[TopGameIdsResponse](body).map(_.gameIds).getOrElse(Set.empty)
-      case Left(_)     => Set.empty
+      case Left(_) => Set.empty
     }
 
   def postFollow(cat: TwitchCategory): IO[Unit] =
@@ -81,7 +81,7 @@ object ApiClient:
   def fetchTagFilters: IO[List[TagFilter]] =
     httpClient.expect[String](Uri.unsafeFromString("/api/tag-filters")).attempt.map {
       case Right(body) => decode[TagFiltersResponse](body).map(_.filters).getOrElse(Nil)
-      case Left(_)     => Nil
+      case Left(_) => Nil
     }
 
   def addTagFilter(filterType: String, tag: String): IO[Unit] =
@@ -100,13 +100,13 @@ object ApiClient:
     val uri = Uri.unsafeFromString("/api/search/channels").withQueryParam("query", query)
     httpClient.expect[String](uri).attempt.map {
       case Right(body) => decode[TwitchSearchChannelsResponse](body).map(_.data).getOrElse(Nil)
-      case Left(_)     => Nil
+      case Left(_) => Nil
     }
 
   def fetchIgnoredStreamers: IO[List[IgnoredStreamer]] =
     httpClient.expect[String](Uri.unsafeFromString("/api/ignored-streamers")).attempt.map {
       case Right(body) => decode[IgnoredStreamersResponse](body).map(_.streamers).getOrElse(Nil)
-      case Left(_)     => Nil
+      case Left(_) => Nil
     }
 
   def addIgnoredStreamer(

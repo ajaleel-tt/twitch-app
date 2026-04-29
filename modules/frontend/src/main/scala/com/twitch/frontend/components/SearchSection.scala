@@ -23,7 +23,7 @@ object SearchSection:
         div(
           cls := "flex items-center gap-3",
           span(cls := "text-2xl", "⚠️"),
-          h3(cls   := "text-lg font-bold text-white", "Popular Category Warning"),
+          h3(cls := "text-lg font-bold text-white", "Popular Category Warning"),
         ),
         p(
           cls := "text-gray-300 text-sm leading-relaxed",
@@ -101,7 +101,7 @@ object SearchSection:
       cls := "flex gap-3 justify-center mb-6",
       input.withSelf { self =>
         (
-          typ         := "text",
+          typ := "text",
           placeholder := "Search for a category...",
           cls := "bg-twitch-dark-card border border-gray-700 text-white placeholder-gray-500 rounded-lg px-4 py-3 w-80 focus:outline-none focus:ring-2 focus:ring-twitch-purple focus:border-transparent transition-all",
           value <-- state.map(_.search.query),
@@ -127,7 +127,7 @@ object SearchSection:
     div(
       cls := "grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4 mt-4",
       children <-- state.map { m =>
-        val s                = m.search
+        val s = m.search
         val paginatedResults =
           s.results.slice(s.currentPage * s.pageSize, (s.currentPage + 1) * s.pageSize)
         paginatedResults.map(cat => categoryCard(state, cat)).toList
@@ -157,7 +157,7 @@ object SearchSection:
         span(
           cls := "text-gray-400 text-sm",
           state.map { m =>
-            val s               = m.search
+            val s = m.search
             val totalLocalPages = Math.max(1, (s.results.size + s.pageSize - 1) / s.pageSize)
             s"Page ${s.currentPage + 1} of $totalLocalPages"
           },
@@ -166,7 +166,7 @@ object SearchSection:
           cls := "bg-twitch-dark-card border border-gray-700 text-white px-4 py-2 rounded-lg hover:bg-twitch-dark-hover disabled:opacity-40 disabled:cursor-not-allowed transition-colors cursor-pointer",
           "Next",
           disabled <-- state.map { m =>
-            val s               = m.search
+            val s = m.search
             val totalLocalPages = (s.results.size + s.pageSize - 1) / s.pageSize
             s.currentPage >= totalLocalPages - 1
           },
@@ -236,7 +236,7 @@ object SearchSection:
     div(
       cls <-- state.map { m =>
         val isSelected = m.search.selectedCategoryIds.contains(cat.id)
-        val base       = List(
+        val base = List(
           "bg-twitch-dark-card",
           "rounded-xl",
           "overflow-hidden",
@@ -276,7 +276,7 @@ object SearchSection:
           )
         },
         img(src := boxArtUrl, cls := "w-full h-48 object-cover"),
-        p(cls   := "text-sm font-semibold text-white p-3 text-center truncate w-full", cat.name),
+        p(cls := "text-sm font-semibold text-white p-3 text-center truncate w-full", cat.name),
       ),
       div(
         cls := "px-3 pb-3 w-full flex justify-center",

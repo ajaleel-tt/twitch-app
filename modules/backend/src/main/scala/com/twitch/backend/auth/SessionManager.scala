@@ -21,7 +21,7 @@ class SessionManager(sessionRepo: SessionRepository, twitchApi: TwitchApi):
 
   def getSession(req: Request[IO]): IO[Option[SessionData]] =
     req.cookies.find(_.name == "session_id").map(_.content) match
-      case None      => IO.pure(None)
+      case None => IO.pure(None)
       case Some(sid) =>
         sessionRepo
           .getSession(sid)

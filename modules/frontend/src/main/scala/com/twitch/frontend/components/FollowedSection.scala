@@ -38,7 +38,7 @@ object FollowedSection:
     div(
       cls := "bg-twitch-dark-card rounded-xl border border-gray-800 p-3 flex flex-col items-center gap-2 hover:border-twitch-purple transition-all duration-200",
       img(src := boxArtUrl, cls := "w-24 h-32 rounded-lg object-cover"),
-      p(cls   := "text-sm font-semibold text-white text-center truncate w-full", cat.name),
+      p(cls := "text-sm font-semibold text-white text-center truncate w-full", cat.name),
       button(
         cls := "bg-twitch-danger/80 hover:bg-twitch-danger text-white text-xs px-3 py-1 rounded-full transition-colors cursor-pointer",
         "Unfollow",

@@ -26,13 +26,13 @@ object AppWiring:
     xa: Transactor[IO],
     client: Client[IO],
   ): IO[App] =
-    val followRepo          = new db.FollowRepository(xa, config.dialect)
-    val tagFilterRepo       = new db.TagFilterRepository(xa, config.dialect)
+    val followRepo = new db.FollowRepository(xa, config.dialect)
+    val tagFilterRepo = new db.TagFilterRepository(xa, config.dialect)
     val ignoredStreamerRepo = new db.IgnoredStreamerRepository(xa, config.dialect)
-    val userRepo            = new db.UserRepository(xa)
-    val sessionRepo         = new db.SessionRepository(xa)
-    val pushRepo            = new db.PushSubscriptionRepository(xa, config.dialect)
-    val topGamesRepo        = new db.TopGamesRepository(xa)
+    val userRepo = new db.UserRepository(xa)
+    val sessionRepo = new db.SessionRepository(xa)
+    val pushRepo = new db.PushSubscriptionRepository(xa, config.dialect)
+    val topGamesRepo = new db.TopGamesRepository(xa)
 
     val emailService = sys
       .env
@@ -49,17 +49,17 @@ object AppWiring:
     val pushServiceIO: IO[Option[PushNotificationService]] =
       val keyIO = sys.env.get("FCM_SERVICE_ACCOUNT_JSON") match
         case Some(json) => ServiceAccountKey.fromJson(json).map(Some(_))
-        case None       =>
+        case None =>
           sys.env.get("FCM_SERVICE_ACCOUNT_KEY") match
             case Some(keyPath) => ServiceAccountKey.fromFile(keyPath).map(Some(_))
-            case None          => IO.none
+            case None => IO.none
       keyIO
         .flatMap {
           case Some(key) =>
             for
               tokenCache <- IO.ref(Option.empty[(String, java.time.Instant)])
               tokenMutex <- cats.effect.std.Mutex[IO]
-              _          <- IO.println("Push notifications enabled")
+              _ <- IO.println("Push notifications enabled")
             yield Some(
               new PushNotificationService(
                 client = client,
@@ -81,17 +81,17 @@ object AppWiring:
         }
 
     for
-      _                  <- db.Schema.initDb(xa, config.dialect)
+      _ <- db.Schema.initDb(xa, config.dialect)
       pendingOAuthStates <- IO.ref(Set.empty[String])
       notificationQueues <- IO.ref(Map.empty[String, (String, Queue[IO, StreamNotification])])
-      pushService        <- pushServiceIO
+      pushService <- pushServiceIO
       twitchApi = new TwitchApiClient(
         client = client,
         clientId = config.clientId,
         clientSecret = config.clientSecret,
       )
       sessionManager = new auth.SessionManager(sessionRepo, twitchApi)
-      authRoutes     = new routes.AuthRoutes(
+      authRoutes = new routes.AuthRoutes(
         clientId = config.clientId,
         emailService = emailService,
         pendingOAuthStates = pendingOAuthStates,
@@ -114,10 +114,10 @@ object AppWiring:
         twitchApi = twitchApi,
       )
       frontendService = fileService[IO](FileService.Config(config.staticDir))
-      httpApp         = Router(
+      httpApp = Router(
         "/api" -> apiRoutes.routes,
-        "/"    -> authRoutes.routes,
-        "/"    -> HttpRoutes.of[IO] {
+        "/" -> authRoutes.routes,
+        "/" -> HttpRoutes.of[IO] {
           case req @ GET -> Root =>
             StaticFile
               .fromPath(fs2.io.file.Path(s"${config.staticDir}/index.html"), Some(req))
