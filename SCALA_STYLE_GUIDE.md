@@ -4,6 +4,13 @@ This project follows the [official Scala style guide](https://docs.scala-lang.or
 
 Goals: **readability**, **consistency**, **diff-friendliness**.
 
+### Adoption Policy
+This guide applies to **new and changed code**. Existing code is not required to be retroactively reformatted. When modifying a file, apply these rules to the lines you touch. Whole-file reformatting is welcome but should be done in dedicated cleanup commits, not mixed with functional changes.
+
+### Excluded Files
+- **Generated code** (e.g., `scalawind.scala`) is excluded from all rules in this guide.
+- **Wire-format models** have specific naming exceptions documented in Section 2.
+
 ---
 
 ## 1. Formatting Basics
@@ -64,29 +71,49 @@ Follow the [official naming conventions](https://docs.scala-lang.org/style/namin
 - **No `get`/`set` prefixes** on accessors/mutators.
 - **Parentheses signal side effects**: include `()` on no-arg methods with side effects; omit for pure accessors.
 
+### Wire-Format Models (Exception)
+Case classes that map directly to external JSON APIs (e.g., Twitch API responses) **must use the field names from the wire format**, even when that means `snake_case`. These models rely on Circe's `derives Codec.AsObject` to automatically match JSON keys to field names. Renaming fields to `camelCase` would break serialization unless custom codecs are added.
+
+```scala
+// CORRECT - matches Twitch API JSON field names
+case class TwitchStream(
+    game_id: String,
+    game_name: String,
+    id: String,
+    started_at: String,
+    thumbnail_url: String,
+    title: String,
+    `type`: String,
+    user_id: String,
+    user_login: String,
+    user_name: String,
+    viewer_count: Int,
+    tags: Option[List[String]] = None,
+) derives Codec.AsObject
+```
+
+Internal models that do not map to an external API use standard `camelCase`.
+
 ---
 
-## 3. Alphabetical Ordering
+## 3. Ordering
 
-**All parameters, fields, and arguments must be alphabetically sorted.**
+### Prefer Alphabetical for Unordered Data
 
-This applies to:
-- Case class fields in definitions
-- Function/method parameters in definitions
-- Constructor parameters in class definitions
-- Named arguments at call sites
-- Members within an import group
+**Prefer alphabetical ordering** for case class fields, function parameters, and named arguments at call sites when the data is unordered (config objects, DTOs, settings). Alphabetical ordering makes it easy to find fields in large declarations and produces predictable diffs.
 
-### Exceptions
-- `using`/`implicit` parameters always come last (language requirement).
-- Parameters with default values that depend on an earlier parameter's value.
-- When implementing a trait whose parameter order is fixed by the parent.
+**Preserve semantic or API order** when it aids readability — for example, when parameters form a logical sequence (e.g., `host`/`port`/`path`), when a constructor mirrors a builder chain, or when the order matches an external API contract.
+
+When in doubt, alphabetical is the safe default.
+
+### Always Alphabetical
+- Members within an import group: `import cats.effect.{IO, Ref, Resource}`
+- Named arguments at call sites for config/DTO constructors
 
 ### Examples
 
-Case class definition:
+Config-style case class (alphabetical):
 ```scala
-// GOOD - alphabetical
 case class AppSettings(
     emailFrom: String,
     emailFromName: String,
@@ -100,41 +127,9 @@ case class AppSettings(
     topGamesCount: Int,
     topGamesPollInterval: FiniteDuration,
 )
-
-// BAD - grouped by concern
-case class AppSettings(
-    pollerInterval: FiniteDuration,
-    recentlyLiveWindow: FiniteDuration,
-    parallelCategories: Int,
-    streamsPageSize: Int,
-    searchPageSize: Int,
-    sseReconnectDelay: FiniteDuration,
-    emailFrom: String,
-    emailFromName: String,
-    pushParallelSends: Int,
-    topGamesCount: Int,
-    topGamesPollInterval: FiniteDuration,
-)
 ```
 
-Function definition:
-```scala
-// GOOD - alphabetical
-def make(
-    client: Client[IO],
-    clientId: String,
-    clientSecret: String,
-    followRepo: FollowRepository,
-    ignoredStreamerRepo: IgnoredStreamerRepository,
-    notificationQueues: Ref[IO, Map[...]]
-    pushRepo: PushSubscriptionRepository,
-    pushService: Option[PushService] = None,
-    settings: AppSettings,
-    tagFilterRepo: TagFilterRepository,
-): IO[StreamPoller] =
-```
-
-Named arguments at call site (also alphabetical):
+Named arguments at call site (alphabetical):
 ```scala
 ServerConfig(
     baseUrl = baseUrl,
@@ -149,6 +144,20 @@ ServerConfig(
     staticDir = staticDir,
 )
 ```
+
+Semantic order is fine when it helps (e.g., a pipeline that reads left-to-right):
+```scala
+def fetchStreamsPage(
+    token: String,
+    categoryId: String,
+    cursor: Option[String],
+): IO[TwitchStreamsResponse] =
+```
+
+### Exceptions
+- `using`/`implicit` parameters always come last (language requirement).
+- Parameters with default values that depend on an earlier parameter's value.
+- When implementing a trait whose parameter order is fixed by the parent.
 
 ---
 
@@ -250,7 +259,8 @@ uri"https://api.twitch.tv/helix/streams"
 
 ### Case Classes
 - Fields on separate lines when more than 2 fields.
-- Fields alphabetically sorted with trailing comma.
+- Prefer alphabetical field ordering for config/DTO-like classes; preserve semantic order when it aids readability (see Section 3).
+- Trailing comma on the last field.
 - `derives` clause on the closing parenthesis line.
 - Single-field case classes may be on one line.
 
@@ -277,7 +287,7 @@ Note: fields with default values sort alphabetically like any other field (unles
 ### Method Signatures
 - **Public methods must have explicit return types.**
 - Private methods should have explicit return types when the body is non-trivial.
-- Multi-line parameter lists: one parameter per line, alphabetically sorted, trailing comma.
+- Multi-line parameter lists: one parameter per line, trailing comma. Prefer alphabetical ordering for config/DTO-like signatures (see Section 3).
 
 ```scala
 def filteredNotificationsForUser(
@@ -352,12 +362,22 @@ enum SqlDialect:
 ### Derives
 Use `derives` for typeclass derivation, placed on the closing parenthesis line:
 ```scala
+// Wire-format model: snake_case field names match the JSON API
 case class TwitchUser(
-    displayName: String,
+    display_name: String,
     email: Option[String] = None,
     id: String,
     login: String,
-    profileImageUrl: String,
+    profile_image_url: String,
+) derives Codec.AsObject
+
+// Internal model: standard camelCase
+case class StreamNotification(
+    categoryId: String,
+    categoryName: String,
+    streamerId: String,
+    tags: List[String] = Nil,
+    viewerCount: Int,
 ) derives Codec.AsObject
 ```
 
@@ -447,9 +467,11 @@ object TwitchServer:
     program.unsafeRunSync()
 ```
 
-### Rule 5: Never Call `unsafe` Methods
+### Rule 5: Avoid Cats-Effect `unsafe` Runtime Escapes
 
-Never call `unsafeRunSync`, `unsafeRunAndForget`, `unsafeToFuture`, or any method with "unsafe" in its name. These break the guarantees that the runtime provides. If you find yourself reaching for an unsafe method, restructure the code so the `IO` is composed into the main `run` method instead.
+Never call `unsafeRunSync`, `unsafeRunAndForget`, `unsafeToFuture`, or other cats-effect runtime escape hatches. These break the guarantees that the IO runtime provides. If you find yourself reaching for one, restructure the code so the `IO` is composed into the main `run` method instead.
+
+Note: `unsafe` methods in other libraries (e.g., `Uri.unsafeFromString`) are fine when the input is known at compile time or otherwise guaranteed to be valid. This rule is specifically about bypassing the cats-effect runtime.
 
 ### Additional Patterns
 
@@ -553,7 +575,7 @@ runner.dialect = scala3
 
 maxColumn = 100
 indent.main = 2
-indent.defnSite = 4
+indent.defnSite = 2
 
 trailingCommas = always
 
@@ -567,4 +589,4 @@ newlines.afterCurlyLambdaParams = squash
 align.preset = more
 ```
 
-**Note:** Scalafmt cannot enforce alphabetical parameter ordering or the named-argument rule. Those require code review discipline.
+**Note:** Scalafmt cannot enforce parameter ordering preferences or the named-argument rule. Those require code review discipline.
