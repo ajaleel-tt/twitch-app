@@ -1,8 +1,9 @@
 package com.twitch.backend
 
-import munit.CatsEffectSuite
 import cats.effect.*
 import doobie.h2.H2Transactor
+import munit.CatsEffectSuite
+
 import com.twitch.core.*
 
 class DatabaseSpec extends CatsEffectSuite:

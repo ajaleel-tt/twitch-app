@@ -1,11 +1,13 @@
 package com.twitch.backend.db
 
+import java.time.Instant
+
 import cats.effect.*
 import cats.syntax.all.*
 import doobie.*
 import doobie.implicits.*
+
 import com.twitch.backend.SqlDialect
-import java.time.Instant
 
 class PushSubscriptionRepository(xa: Transactor[IO], dialect: SqlDialect):
 

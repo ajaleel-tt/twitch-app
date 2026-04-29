@@ -1,8 +1,15 @@
 package com.twitch.backend
 
 import cats.effect.IO
-import com.twitch.core.*
+
 import com.twitch.backend.db.PushSubscriptionRow
+import com.twitch.core.{
+  StreamNotification,
+  TwitchSearchCategoriesResponse,
+  TwitchSearchChannelsResponse,
+  TwitchTokenResponse,
+  TwitchUser,
+}
 
 trait PushService:
 

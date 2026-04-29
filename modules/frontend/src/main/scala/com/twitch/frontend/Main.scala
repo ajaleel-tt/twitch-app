@@ -1,5 +1,7 @@
 package com.twitch.frontend
 
+import scala.scalajs.js
+
 import calico.*
 import calico.html.io.{*, given}
 import cats.effect.*
@@ -7,7 +9,7 @@ import cats.syntax.all.*
 import fs2.concurrent.*
 import fs2.dom.*
 import org.scalajs.dom
-import scala.scalajs.js
+
 import com.twitch.core.*
 import com.twitch.frontend.components.*
 

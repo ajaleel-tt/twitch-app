@@ -5,6 +5,7 @@ import calico.html.io.{*, given}
 import cats.effect.*
 import fs2.concurrent.*
 import fs2.dom.*
+
 import com.twitch.frontend.Model
 
 object LoginSection:

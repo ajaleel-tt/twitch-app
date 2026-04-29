@@ -1,12 +1,14 @@
 package com.twitch.backend
 
+import scala.concurrent.duration.*
+
 import cats.effect.*
-import com.twitch.core.*
-import com.twitch.backend.db.TopGamesRepository
 import org.http4s.circe.CirceEntityDecoder.*
 import org.http4s.client.Client
 import org.http4s.implicits.*
-import scala.concurrent.duration.*
+
+import com.twitch.backend.db.TopGamesRepository
+import com.twitch.core.{TwitchCategory, TwitchSearchCategoriesResponse}
 
 class TopGamesPoller(
   clientId: String,
@@ -71,4 +73,11 @@ object TopGamesPoller:
     settings: AppSettings,
   ): IO[TopGamesPoller] =
     for tokenRef <- IO.ref(Option.empty[String])
-    yield new TopGamesPoller(clientId, clientSecret, client, topGamesRepo, tokenRef, settings)
+    yield new TopGamesPoller(
+      clientId = clientId,
+      clientSecret = clientSecret,
+      client = client,
+      topGamesRepo = topGamesRepo,
+      appToken = tokenRef,
+      settings = settings,
+    )

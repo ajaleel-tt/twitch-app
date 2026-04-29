@@ -1,8 +1,11 @@
 package com.twitch.backend
 
-import munit.FunSuite
-import java.time.Instant
 import scala.concurrent.duration.*
+
+import java.time.Instant
+
+import munit.FunSuite
+
 import com.twitch.core.*
 
 class StreamLogicSpec extends FunSuite:

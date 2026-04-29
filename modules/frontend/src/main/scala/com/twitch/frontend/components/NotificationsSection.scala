@@ -3,10 +3,11 @@ package com.twitch.frontend.components
 import calico.*
 import calico.html.io.{*, given}
 import cats.effect.*
-import com.twitch.core.*
-import com.twitch.frontend.Model
 import fs2.concurrent.*
 import fs2.dom.*
+
+import com.twitch.core.*
+import com.twitch.frontend.Model
 
 object NotificationsSection:
 

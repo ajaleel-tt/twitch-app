@@ -1,8 +1,10 @@
 package com.twitch.backend
 
-import java.time.Instant
 import scala.concurrent.duration.FiniteDuration
-import com.twitch.core.*
+
+import java.time.Instant
+
+import com.twitch.core.{StreamNotification, TagFilter, TwitchStream}
 
 object StreamLogic:
 

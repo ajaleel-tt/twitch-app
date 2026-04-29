@@ -1,17 +1,19 @@
 package com.twitch.backend
 
-import munit.CatsEffectSuite
+import scala.concurrent.duration.*
+
 import cats.effect.*
 import cats.effect.std.Queue
 import cats.syntax.all.*
 import doobie.h2.H2Transactor
+import munit.CatsEffectSuite
 import org.http4s.*
-import org.http4s.implicits.*
-import org.http4s.headers.Location
 import org.http4s.circe.CirceEntityDecoder.*
 import org.http4s.circe.CirceEntityEncoder.*
+import org.http4s.headers.Location
+import org.http4s.implicits.*
+
 import com.twitch.core.*
-import scala.concurrent.duration.*
 
 class RoutesSpec extends CatsEffectSuite:
 

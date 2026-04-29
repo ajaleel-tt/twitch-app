@@ -5,8 +5,9 @@ import calico.html.io.{*, given}
 import cats.effect.*
 import fs2.concurrent.*
 import fs2.dom.*
-import com.twitch.frontend.{ApiClient, IgnoredStreamerState, Model}
+
 import com.twitch.core.*
+import com.twitch.frontend.{ApiClient, IgnoredStreamerState, Model}
 
 object IgnoredStreamersSection:
 

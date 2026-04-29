@@ -1,16 +1,37 @@
 package com.twitch.backend.routes
 
 import cats.effect.*
-import org.http4s.*
-import org.http4s.dsl.io.*
-import org.http4s.circe.CirceEntityDecoder.*
-import org.http4s.circe.CirceEntityEncoder.*
 import cats.effect.std.Queue
 import io.circe.syntax.*
-import com.twitch.core.*
+import org.http4s.*
+import org.http4s.circe.CirceEntityDecoder.*
+import org.http4s.circe.CirceEntityEncoder.*
+import org.http4s.dsl.io.*
+
 import com.twitch.backend.{AppSettings, TwitchApi, Validation}
 import com.twitch.backend.auth.SessionManager
-import com.twitch.backend.db.*
+import com.twitch.backend.db.{
+  FollowRepository,
+  IgnoredStreamerRepository,
+  PushSubscriptionRepository,
+  SessionRepository,
+  TagFilterRepository,
+  TopGamesRepository,
+}
+import com.twitch.core.{
+  AddIgnoredStreamerRequest,
+  AddTagFilterRequest,
+  AppConfig,
+  FollowRequest,
+  FollowedCategoriesResponse,
+  IgnoredStreamersResponse,
+  PushRegisterRequest,
+  PushUnregisterRequest,
+  RemoveIgnoredStreamerRequest,
+  StreamNotification,
+  TagFiltersResponse,
+  TopGameIdsResponse,
+}
 
 class ApiRoutes(
   clientId: String,

@@ -1,11 +1,12 @@
 package com.twitch.backend
 
 import cats.effect.*
-import com.twitch.core.*
 import org.http4s.*
 import org.http4s.circe.CirceEntityDecoder.*
 import org.http4s.client.Client
 import org.http4s.implicits.*
+
+import com.twitch.core.TwitchTokenResponse
 
 abstract class TwitchPoller(
   protected val clientId: String,

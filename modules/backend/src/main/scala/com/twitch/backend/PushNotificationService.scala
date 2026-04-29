@@ -1,21 +1,23 @@
 package com.twitch.backend
 
+import java.security.KeyFactory
+import java.security.spec.PKCS8EncodedKeySpec
+import java.time.Instant
+import java.util.Base64
+
 import cats.effect.*
 import cats.effect.implicits.*
 import cats.effect.std.Mutex
+import io.circe.*
+import io.circe.parser.{decode => jsonDecode}
+import io.circe.syntax.*
 import org.http4s.*
 import org.http4s.client.Client
-import org.http4s.implicits.*
 import org.http4s.headers.{`Content-Type`, Authorization}
-import io.circe.*
-import io.circe.syntax.*
-import io.circe.parser.{decode => jsonDecode}
-import com.twitch.core.StreamNotification
+import org.http4s.implicits.*
+
 import com.twitch.backend.db.{PushSubscriptionRepository, PushSubscriptionRow}
-import java.security.KeyFactory
-import java.security.spec.PKCS8EncodedKeySpec
-import java.util.Base64
-import java.time.Instant
+import com.twitch.core.StreamNotification
 
 class PushNotificationService(
   client: Client[IO],

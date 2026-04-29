@@ -1,9 +1,10 @@
 package com.twitch.backend.db
 
+import java.time.Instant
+
 import cats.effect.*
 import doobie.*
 import doobie.implicits.*
-import java.time.Instant
 
 class UserRepository(xa: Transactor[IO]):
 

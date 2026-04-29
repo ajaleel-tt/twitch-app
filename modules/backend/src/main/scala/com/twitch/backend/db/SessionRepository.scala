@@ -1,10 +1,12 @@
 package com.twitch.backend.db
 
+import java.time.Instant
+
 import cats.effect.*
 import doobie.*
 import doobie.implicits.*
+
 import com.twitch.core.TwitchUser
-import java.time.Instant
 
 class SessionRepository(xa: Transactor[IO]):
 
