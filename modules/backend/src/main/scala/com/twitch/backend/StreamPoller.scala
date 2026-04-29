@@ -48,14 +48,7 @@ class StreamPoller(
   private def fetchLiveStreams(token: String, categoryIds: List[String]): IO[List[TwitchStream]] =
     categoryIds
       .parTraverseN(settings.parallelCategories) { categoryId =>
-        fetchPaginated[TwitchStream] { (tk, cur) =>
-          fetchStreamsPage(tk, categoryId, cur).map { resp =>
-            new PaginatedResponse[TwitchStream] {
-              def pageData = resp.data
-              def pageCursor = resp.pagination.flatMap(_.cursor)
-            }
-          }
-        }(token)
+        fetchPaginated[TwitchStream](fetchStreamsPage(_, categoryId, _))(token)
       }
       .map(_.flatten)
 

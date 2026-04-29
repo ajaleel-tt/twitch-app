@@ -6,7 +6,7 @@ import org.http4s.circe.CirceEntityDecoder.*
 import org.http4s.client.Client
 import org.http4s.implicits.*
 
-import com.twitch.core.TwitchTokenResponse
+import com.twitch.core.{PaginatedResponse, TwitchTokenResponse}
 
 abstract class TwitchPoller(
   protected val clientId: String,
@@ -60,21 +60,19 @@ abstract class TwitchPoller(
 
   protected def fetchPaginated[A](
     fetchPage: (String, Option[String]) => IO[PaginatedResponse[A]],
+    limit: Int = Int.MaxValue,
   )(token: String): IO[List[A]] = {
     def go(cursor: Option[String], acc: List[A]): IO[List[A]] =
       fetchPage(token, cursor).flatMap { resp =>
         val newAcc = acc ::: resp.pageData
-        resp.pageCursor match {
-          case Some(next) if resp.pageData.nonEmpty => go(Some(next), newAcc)
-          case _ => IO.pure(newAcc)
-        }
+        if newAcc.size >= limit then IO.pure(newAcc.take(limit))
+        else
+          resp.pageCursor match {
+            case Some(next) if resp.pageData.nonEmpty => go(Some(next), newAcc)
+            case _ => IO.pure(newAcc.take(limit))
+          }
       }
     go(None, Nil)
-  }
-
-  trait PaginatedResponse[A] {
-    def pageData: List[A]
-    def pageCursor: Option[String]
   }
 
 }
