@@ -41,12 +41,11 @@ self.addEventListener('push', (event) => {
     payload = { notification: { title: 'Twitch Category Tracker', body: event.data.text() } };
   }
 
-  const notification = payload.notification || {};
-  const data = payload.data || {};
+  const data = payload.data || payload.notification || {};
 
-  const title = notification.title || 'Stream is live!';
+  const title = data.title || 'Stream is live!';
   const options = {
-    body: notification.body || '',
+    body: data.body || '',
     icon: '/icons/icon.svg',
     badge: '/icons/icon.svg',
     data: data,
@@ -57,25 +56,24 @@ self.addEventListener('push', (event) => {
   event.waitUntil(self.registration.showNotification(title, options));
 });
 
-// Notification click: open the stream on Twitch
+// Notification click: open the stream in the Twitch app via deep link
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
 
   const data = event.notification.data || {};
-  const url = data.streamerLogin
-    ? `https://twitch.tv/${data.streamerLogin}`
-    : '/';
+  const streamer = data.streamerLogin;
+
+  if (!streamer) {
+    event.waitUntil(clients.openWindow('/'));
+    return;
+  }
+
+  // Use Twitch deep link to open the native app directly
+  const deepLink = `twitch://stream/${streamer}`;
+  const fallbackUrl = `https://twitch.tv/${streamer}`;
 
   event.waitUntil(
-    clients.matchAll({ type: 'window', includeUncontrolled: true }).then((windowClients) => {
-      // Focus an existing tab if one is open
-      for (const client of windowClients) {
-        if (client.url.includes('twitch.tv') && 'focus' in client) {
-          return client.focus();
-        }
-      }
-      return clients.openWindow(url);
-    })
+    clients.openWindow(deepLink).catch(() => clients.openWindow(fallbackUrl))
   );
 });
 

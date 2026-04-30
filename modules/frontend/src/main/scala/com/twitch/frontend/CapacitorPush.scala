@@ -33,8 +33,8 @@ object CapacitorPush:
 
   @js.native
   trait PushNotificationSchema extends js.Object:
-    val title: String               = js.native
-    val body: String                = js.native
+    val title: String = js.native
+    val body: String = js.native
     val data: js.UndefOr[js.Object] = js.native
 
   @js.native
@@ -50,21 +50,36 @@ object CapacitorPush:
     plugin.register().asInstanceOf[js.Promise[Unit]]
 
   def onRegistration(cb: PushToken => Unit): js.Promise[js.Any] =
-    plugin.addListener("registration", { (data: js.Any) =>
-      cb(data.asInstanceOf[PushToken])
-    }: js.Function1[js.Any, Unit]).asInstanceOf[js.Promise[js.Any]]
+    plugin
+      .addListener(
+        "registration",
+        { (data: js.Any) => cb(data.asInstanceOf[PushToken]) }: js.Function1[js.Any, Unit],
+      )
+      .asInstanceOf[js.Promise[js.Any]]
 
   def onRegistrationError(cb: RegistrationError => Unit): js.Promise[js.Any] =
-    plugin.addListener("registrationError", { (data: js.Any) =>
-      cb(data.asInstanceOf[RegistrationError])
-    }: js.Function1[js.Any, Unit]).asInstanceOf[js.Promise[js.Any]]
+    plugin
+      .addListener(
+        "registrationError",
+        { (data: js.Any) => cb(data.asInstanceOf[RegistrationError]) }: js.Function1[js.Any, Unit],
+      )
+      .asInstanceOf[js.Promise[js.Any]]
 
   def onPushNotificationReceived(cb: PushNotificationSchema => Unit): js.Promise[js.Any] =
-    plugin.addListener("pushNotificationReceived", { (data: js.Any) =>
-      cb(data.asInstanceOf[PushNotificationSchema])
-    }: js.Function1[js.Any, Unit]).asInstanceOf[js.Promise[js.Any]]
+    plugin
+      .addListener(
+        "pushNotificationReceived",
+        { (data: js.Any) => cb(data.asInstanceOf[PushNotificationSchema]) }: js.Function1[
+          js.Any,
+          Unit,
+        ],
+      )
+      .asInstanceOf[js.Promise[js.Any]]
 
   def onPushNotificationActionPerformed(cb: ActionPerformed => Unit): js.Promise[js.Any] =
-    plugin.addListener("pushNotificationActionPerformed", { (data: js.Any) =>
-      cb(data.asInstanceOf[ActionPerformed])
-    }: js.Function1[js.Any, Unit]).asInstanceOf[js.Promise[js.Any]]
+    plugin
+      .addListener(
+        "pushNotificationActionPerformed",
+        { (data: js.Any) => cb(data.asInstanceOf[ActionPerformed]) }: js.Function1[js.Any, Unit],
+      )
+      .asInstanceOf[js.Promise[js.Any]]

@@ -4,8 +4,10 @@ import scala.sys.process._
 val scala3Version = "3.6.3"
 
 ThisBuild / scalaVersion := scala3Version
-ThisBuild / version      := "0.1.0-SNAPSHOT"
+ThisBuild / version := "0.1.0-SNAPSHOT"
 ThisBuild / organization := "com.twitch"
+// Enforce new Scala 3 syntax (if...then, while...do) on backend and core.
+// Frontend is excluded due to generated code (scalawind.scala).
 
 // ── npm / Tailwind / Scalawind tasks ───────────────────────────────
 
@@ -16,13 +18,12 @@ val tailwindBuild = taskKey[File]("Build Tailwind CSS output")
 val scalawindOutput = file("modules/frontend/src/main/scala/com/twitch/frontend/scalawind.scala")
 
 // Helper to build command for Windows compatibility
-def buildCommand(cmd: String, args: Seq[String]): Seq[String] = {
+def buildCommand(cmd: String, args: Seq[String]): Seq[String] =
   if (System.getProperty("os.name").toLowerCase.contains("win")) {
     Seq("cmd", "/c", cmd) ++ args
   } else {
     Seq(cmd) ++ args
   }
-}
 
 ThisBuild / npmInstall := {
   val log = streams.value.log
@@ -37,11 +38,12 @@ ThisBuild / npmInstall := {
 
 // ── Project modules ────────────────────────────────────────────────
 
-lazy val root = project.in(file("."))
+lazy val root = project
+  .in(file("."))
   .aggregate(core.jvm, core.js, frontend, backend)
   .settings(
     publish := {},
-    publishLocal := {}
+    publishLocal := {},
   )
 
 lazy val core = crossProject(JSPlatform, JVMPlatform)
@@ -49,15 +51,17 @@ lazy val core = crossProject(JSPlatform, JVMPlatform)
   .in(file("modules/core"))
   .settings(
     name := "core",
+    scalacOptions ++= Seq("-new-syntax", "-no-indent"),
     libraryDependencies ++= Seq(
       "org.typelevel" %%% "cats-effect" % "3.5.7",
-      "io.circe"      %%% "circe-core"   % "0.14.10",
-      "io.circe"      %%% "circe-generic" % "0.14.10",
-      "io.circe"      %%% "circe-parser" % "0.14.10"
-    )
+      "io.circe" %%% "circe-core" % "0.14.10",
+      "io.circe" %%% "circe-generic" % "0.14.10",
+      "io.circe" %%% "circe-parser" % "0.14.10",
+    ),
   )
 
-lazy val frontend = project.in(file("modules/frontend"))
+lazy val frontend = project
+  .in(file("modules/frontend"))
   .enablePlugins(ScalaJSPlugin)
   .dependsOn(core.js)
   .settings(
@@ -65,9 +69,9 @@ lazy val frontend = project.in(file("modules/frontend"))
     scalaJSUseMainModuleInitializer := true,
     Compile / mainClass := Some("com.twitch.frontend.Main"),
     libraryDependencies ++= Seq(
-      "com.armanbilge" %%% "calico"     % "0.2.3",
-      "org.http4s"     %%% "http4s-dom" % "0.2.11",
-      "org.http4s"     %%% "http4s-circe" % "0.23.30"
+      "com.armanbilge" %%% "calico" % "0.2.3",
+      "org.http4s" %%% "http4s-dom" % "0.2.11",
+      "org.http4s" %%% "http4s-circe" % "0.23.30",
     ),
 
     // Generate scalawind.scala before compilation
@@ -78,10 +82,19 @@ lazy val frontend = project.in(file("modules/frontend"))
         log.info("Generating scalawind.scala...")
         val base = (ThisBuild / baseDirectory).value
         val exitCode = Process(
-          buildCommand("npx", Seq("scalawind", "generate",
-            "-o", scalawindOutput.absolutePath,
-            "-p", "com.twitch.frontend")),
-          base)
+          buildCommand(
+            "npx",
+            Seq(
+              "scalawind",
+              "generate",
+              "-o",
+              scalawindOutput.absolutePath,
+              "-p",
+              "com.twitch.frontend",
+            ),
+          ),
+          base,
+        )
           .!(ProcessLogger(s => log.info(s), s => log.error(s)))
         if (exitCode != 0) sys.error("scalawind generate failed")
       }
@@ -99,10 +112,12 @@ lazy val frontend = project.in(file("modules/frontend"))
       if (!outFile.exists() || inputFile.lastModified() > outFile.lastModified()) {
         log.info("Building Tailwind CSS...")
         val exitCode = Process(
-          buildCommand("npx", Seq("tailwindcss",
-            "-i", inputFile.absolutePath,
-            "-o", outFile.absolutePath)),
-          base)
+          buildCommand(
+            "npx",
+            Seq("tailwindcss", "-i", inputFile.absolutePath, "-o", outFile.absolutePath),
+          ),
+          base,
+        )
           .!(ProcessLogger(s => log.info(s), s => log.error(s)))
         if (exitCode != 0) sys.error("tailwindcss build failed")
       }
@@ -112,28 +127,30 @@ lazy val frontend = project.in(file("modules/frontend"))
       scalawindGen.value
       tailwindBuild.value
       (Compile / compile).value
-    }
+    },
   )
 
-lazy val backend = project.in(file("modules/backend"))
+lazy val backend = project
+  .in(file("modules/backend"))
   .dependsOn(core.jvm)
   .settings(
     name := "backend",
+    scalacOptions ++= Seq("-new-syntax", "-no-indent"),
     libraryDependencies ++= Seq(
-      "org.http4s"    %% "http4s-ember-server" % "0.23.30",
-      "org.http4s"    %% "http4s-ember-client" % "0.23.30",
-      "org.http4s"    %% "http4s-dsl"          % "0.23.30",
-      "org.http4s"    %% "http4s-circe"        % "0.23.30",
-      "ch.qos.logback" % "logback-classic"     % "1.5.16",
-      "org.tpolecat"  %% "doobie-core"         % "1.0.0-RC8",
-      "org.tpolecat"  %% "doobie-postgres"     % "1.0.0-RC8",
-      "org.tpolecat"  %% "doobie-hikari"       % "1.0.0-RC8",
-      "org.postgresql"  % "postgresql"          % "42.7.4",
-      "org.tpolecat"  %% "doobie-h2"           % "1.0.0-RC8",
-      "com.h2database" % "h2"                  % "2.3.232",
-      "com.typesafe"   % "config"              % "1.4.3",
-      "org.scalameta"  %% "munit"              % "1.0.0"  % Test,
-      "org.typelevel"  %% "munit-cats-effect"  % "2.0.0"  % Test
+      "org.http4s" %% "http4s-ember-server" % "0.23.30",
+      "org.http4s" %% "http4s-ember-client" % "0.23.30",
+      "org.http4s" %% "http4s-dsl" % "0.23.30",
+      "org.http4s" %% "http4s-circe" % "0.23.30",
+      "ch.qos.logback" % "logback-classic" % "1.5.16",
+      "org.tpolecat" %% "doobie-core" % "1.0.0-RC8",
+      "org.tpolecat" %% "doobie-postgres" % "1.0.0-RC8",
+      "org.tpolecat" %% "doobie-hikari" % "1.0.0-RC8",
+      "org.postgresql" % "postgresql" % "42.7.4",
+      "org.tpolecat" %% "doobie-h2" % "1.0.0-RC8",
+      "com.h2database" % "h2" % "2.3.232",
+      "com.typesafe" % "config" % "1.4.3",
+      "org.scalameta" %% "munit" % "1.0.0" % Test,
+      "org.typelevel" %% "munit-cats-effect" % "2.0.0" % Test,
     ),
     assembly / mainClass := Some("com.twitch.backend.TwitchServer"),
     assembly / assemblyJarName := "twitch-app.jar",
@@ -142,7 +159,7 @@ lazy val backend = project.in(file("modules/backend"))
       case PathList("META-INF", _*) => MergeStrategy.discard
       case "module-info.class" => MergeStrategy.discard
       case x => MergeStrategy.first
-    }
+    },
   )
 
 // ── Convenience command alias ──────────────────────────────────────
