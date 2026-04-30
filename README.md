@@ -105,7 +105,7 @@ npx cap sync android
 npx cap open android
 ```
 
-Build and run from Android Studio. The custom native files (`MainActivity.java`, `TwitchMessagingService.java`, `AndroidManifest.xml`, icon vectors) are tracked in git and will survive a re-sync, but a fresh `npx cap add android` will overwrite them — copy them back from git if that happens.
+Build and run from Android Studio. A fresh `npx cap add android` will overwrite custom native code — restore from git if that happens.
 
 #### iOS
 
@@ -127,20 +127,6 @@ Select a simulator or physical device in Xcode and press Cmd+R to build.
 **Push notifications:** The iOS Simulator cannot receive push notifications. To test, build to a physical iPhone (connect via USB, enable Developer Mode in Settings > Privacy & Security).
 
 **APNs setup:** Upload an APNs Authentication Key (.p8) to Firebase Console > Project Settings > Cloud Messaging > Apple app configuration. FCM handles delivery to iOS via APNs automatically.
-
-#### What's tracked in git vs. generated
-
-Only custom native source files are committed. Generated Capacitor scaffolding (Gradle wrappers, CocoaPods, build intermediates) is gitignored and recreated by `npx cap add`/`npx cap sync`.
-
-| Tracked | Generated |
-|---------|-----------|
-| `MainActivity.java`, `TwitchMessagingService.java` | Gradle files, `gradlew`, `settings.gradle` |
-| `AndroidManifest.xml` | `capacitor.build.gradle`, splash PNGs, mipmaps |
-| `app/build.gradle` (has Firebase deps) | `proguard-rules.pro`, `styles.xml`, `strings.xml` |
-| `google-services.json` | `capacitor-cordova-android-plugins/` |
-| `AppDelegate.swift`, `Info.plist`, `App.entitlements` | `ios/App/App/public/` (copied web assets) |
-| `project.pbxproj`, `AppIcon.appiconset/` | `DerivedData/`, `Pods/`, `capacitor.config.json` |
-| Icon vectors (`ic_launcher_foreground.xml`) | |
 
 ### Tech Stack
 
