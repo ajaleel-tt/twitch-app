@@ -6,7 +6,7 @@ import cats.effect.*
 import fs2.concurrent.*
 import fs2.dom.*
 
-import com.twitch.frontend.{CapacitorPush, Model}
+import com.twitch.frontend.Model
 
 object LoginSection:
 
@@ -74,25 +74,14 @@ object LoginSection:
     )
 
   private def contactLink(label: String, url: String): Resource[IO, HtmlDivElement[IO]] =
-    if CapacitorPush.isNative then
-      div(
-        a(
-          cls := "text-sm text-gray-400 hover:text-twitch-purple transition-colors px-5 py-2.5 rounded-lg border border-gray-700 hover:border-twitch-purple inline-block cursor-pointer",
-          onClick --> {
-            _.foreach(_ => IO { val _ = org.scalajs.dom.window.open(url, "_system") })
-          },
-          label,
-        ),
-      )
-    else
-      div(
-        a(
-          cls := "text-sm text-gray-400 hover:text-twitch-purple transition-colors px-5 py-2.5 rounded-lg border border-gray-700 hover:border-twitch-purple inline-block",
-          href := url,
-          target := "_blank",
-          label,
-        ),
-      )
+    div(
+      a(
+        cls := "text-sm text-gray-400 hover:text-twitch-purple transition-colors px-5 py-2.5 rounded-lg border border-gray-700 hover:border-twitch-purple inline-block",
+        href := url,
+        target := "_blank",
+        label,
+      ),
+    )
 
   def statusBar(state: SignallingRef[IO, Model]): Resource[IO, HtmlDivElement[IO]] =
     div(
