@@ -95,7 +95,7 @@ docker run -p 8080:8080 \
 
 ### Mobile Apps (Android & iOS)
 
-The app ships as a native mobile app via [Capacitor](https://capacitorjs.com/). The WebView loads the production server, while native plugins handle push notifications.
+The app ships as a native mobile app via [Capacitor](https://capacitorjs.com/). The WebView loads the production server, while native plugins handle push notifications. Capacitor's CLI (`npx cap`) is installed as a project dependency — running `npm install` is all that's needed.
 
 #### Android
 
