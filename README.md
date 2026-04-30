@@ -26,7 +26,7 @@ Install all of the following before building (works on macOS, Linux, or Windows)
 | sbt | latest | [sbt download](https://www.scala-sbt.org/download) or `brew install sbt` |
 | Node.js | 20+ | [nodejs.org](https://nodejs.org/) or `brew install node` |
 
-Node.js provides `npm` and `npx`, used by the build for Tailwind CSS and Scalawind generation. `npm install` runs automatically on first build.
+Node.js includes `npm` and `npx` automatically — no separate install needed. They're used by the build for Tailwind CSS and Scalawind generation. `npm install` runs automatically on first build.
 
 ### Running Locally
 
