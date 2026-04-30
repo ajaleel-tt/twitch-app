@@ -205,18 +205,28 @@ object Main extends IOWebApp:
           instructionStep(
             "1",
             "Allow notifications",
-            "Make sure you give this site permission to send you browser notifications so you know when streams go live.",
+            if CapacitorPush.isNative then
+              "Allow notifications so you know when streams go live."
+            else
+              "Make sure you give this site permission to send you browser notifications so you know when streams go live.",
           ),
           instructionStep(
             "2",
             "Follow categories",
             "Search for Twitch categories below and follow the ones you want to track.",
           ),
-          instructionStep(
-            "3",
-            "Keep this tab open",
-            "You\u2019ll get notified when your favorite categories go live! Pin this tab so you don\u2019t close it by accident.",
-          ),
+          if CapacitorPush.isNative then
+            instructionStep(
+              "3",
+              "That\u2019s it!",
+              "You\u2019ll get notified when your favorite categories go live.",
+            )
+          else
+            instructionStep(
+              "3",
+              "Keep this tab open",
+              "You\u2019ll get notified when your favorite categories go live! Pin this tab so you don\u2019t close it by accident.",
+            ),
         ),
       ),
       // Search section
