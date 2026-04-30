@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "270322290657",
+    "project_id": "twitch-category-tracker",
+    "storage_bucket": "twitch-category-tracker.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:270322290657:android:5d73d92afd5be838a30ca0",
+        "android_client_info": {
+          "package_name": "com.twitchnotify.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCmksSpWww_F6KVP2hhYoimCqFrPVvm41g"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
