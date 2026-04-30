@@ -68,7 +68,13 @@ ios/*
 !ios/App/
 ios/App/*
 !ios/App/App/
+!ios/App/App.xcodeproj/
+ios/App/App.xcodeproj/*
+!ios/App/App.xcodeproj/project.pbxproj
 ios/App/App/*
+!ios/App/App/AppDelegate.swift
+!ios/App/App/Info.plist
+!ios/App/App/App.entitlements
 !ios/App/App/Assets.xcassets/
 ios/App/App/Assets.xcassets/*
 !ios/App/App/Assets.xcassets/AppIcon.appiconset/
