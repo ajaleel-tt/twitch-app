@@ -16,12 +16,19 @@ The backend polls the Twitch API every 60 seconds and pushes updates to connecte
 - `modules/frontend` — Scala.js frontend using Calico and Tailwind CSS (via Scalawind)
 - `modules/backend` — Http4s server (JVM)
 
-### Running Locally
+### Prerequisites
 
-**Prerequisites** (must be on your PATH):
-- JDK 11+
-- [sbt](https://www.scala-sbt.org/download)
-- [Node.js](https://nodejs.org/) 20+ (provides `npm` and `npx`, used by the build for Tailwind CSS and Scalawind generation; `npm install` runs automatically on first build)
+Install all of the following before building (works on macOS, Linux, or Windows):
+
+| Tool | Version | Install |
+|------|---------|---------|
+| JDK | 17+ | [Adoptium](https://adoptium.net/) or `brew install openjdk@17` |
+| sbt | latest | [sbt download](https://www.scala-sbt.org/download) or `brew install sbt` |
+| Node.js | 20+ | [nodejs.org](https://nodejs.org/) or `brew install node` |
+
+Node.js provides `npm` and `npx`, used by the build for Tailwind CSS and Scalawind generation. `npm install` runs automatically on first build.
+
+### Running Locally
 
 1. Register an app on the [Twitch Developer Console](https://dev.twitch.tv/console) with redirect URL `http://localhost:8080/auth/callback`.
 
@@ -92,9 +99,19 @@ The app ships as a native mobile app via [Capacitor](https://capacitorjs.com/). 
 
 #### Android
 
-**Prerequisites:** Android Studio, JDK 17+
+**Prerequisites:**
+
+| Tool | Install |
+|------|---------|
+| Android Studio | [developer.android.com/studio](https://developer.android.com/studio) |
+| JDK 17+ | Bundled with Android Studio, or install separately |
+
+**Setup:**
 
 ```sh
+# Install JS dependencies (if not done already)
+npm install
+
 # Generate the Capacitor project (only needed once, or after deleting android/)
 npx cap add android
 
@@ -105,13 +122,31 @@ npx cap sync android
 npx cap open android
 ```
 
-Build and run from Android Studio. A fresh `npx cap add android` will overwrite custom native code — restore from git if that happens.
+In Android Studio: select a device/emulator from the toolbar and click the Run button (green triangle).
 
-#### iOS
+A fresh `npx cap add android` will overwrite custom native code — restore from git if that happens.
 
-**Prerequisites:** Xcode (full app, not just Command Line Tools), Apple Developer account (for device testing and App Store)
+#### iOS (requires macOS)
+
+**Prerequisites:**
+
+| Tool | Install |
+|------|---------|
+| Xcode | [Mac App Store](https://apps.apple.com/app/xcode/id497799835) (free, ~12GB) |
+| Apple Developer account | [developer.apple.com/programs](https://developer.apple.com/programs/) ($99/year, required for device testing and App Store) |
+
+After installing Xcode, run once:
+```sh
+sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
+```
+(Adjust the path if Xcode is installed elsewhere.)
+
+**Setup:**
 
 ```sh
+# Install JS dependencies (if not done already)
+npm install
+
 # Generate the Capacitor project (only needed once, or after deleting ios/)
 npx cap add ios
 
@@ -122,11 +157,19 @@ npx cap sync ios
 npx cap open ios
 ```
 
-Select a simulator or physical device in Xcode and press Cmd+R to build.
+In Xcode: select a simulator or physical device from the toolbar dropdown and press Cmd+R to build and run.
 
-**Push notifications:** The iOS Simulator cannot receive push notifications. To test, build to a physical iPhone (connect via USB, enable Developer Mode in Settings > Privacy & Security).
+**Testing on a physical iPhone:**
+1. Connect via USB
+2. On the iPhone: Settings > Privacy & Security > Developer Mode > enable (requires restart)
+3. In Xcode: Settings > Accounts > sign in with your Apple ID and select your development team
+4. Select your phone from the device dropdown, then Cmd+R
 
-**APNs setup:** Upload an APNs Authentication Key (.p8) to Firebase Console > Project Settings > Cloud Messaging > Apple app configuration. FCM handles delivery to iOS via APNs automatically.
+**Push notifications:** The iOS Simulator cannot receive push notifications — a physical device is required.
+
+**APNs setup (required for iOS push):**
+1. In [Apple Developer](https://developer.apple.com/account/resources/authkeys/list) > Keys > create a new key with APNs enabled, download the `.p8` file
+2. In [Firebase Console](https://console.firebase.google.com) > Project Settings > Cloud Messaging > Apple app configuration > upload the `.p8` key with your Key ID and Team ID
 
 ### Tech Stack
 
