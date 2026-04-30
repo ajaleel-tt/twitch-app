@@ -78,7 +78,25 @@ ios/App/App/*
 !ios/App/App/Assets.xcassets/
 ios/App/App/Assets.xcassets/*
 !ios/App/App/Assets.xcassets/AppIcon.appiconset/
-android/
+android/*
+!android/app/
+!android/build.gradle
+!android/gradle.properties
+!android/settings.gradle
+!android/variables.gradle
+!android/capacitor.settings.gradle
+android/app/*
+!android/app/build.gradle
+!android/app/capacitor.build.gradle
+!android/app/google-services.json
+!android/app/proguard-rules.pro
+!android/app/src/
+android/app/src/*
+!android/app/src/main/
+android/app/src/main/*
+!android/app/src/main/AndroidManifest.xml
+!android/app/src/main/java/
+!android/app/src/main/res/
 
 ### Playwright ###
 .playwright-mcp/
