@@ -20,7 +20,7 @@ import com.twitch.backend.db.{
 import com.twitch.core.{StreamNotification, TwitchStream, TwitchStreamsResponse}
 
 class StreamPoller(
-  appToken: Ref[IO, Option[String]],
+  appToken: Ref[IO, Option[AppAccessToken]],
   client: Client[IO],
   clientId: String,
   clientSecret: String,
@@ -35,20 +35,21 @@ class StreamPoller(
 ) extends TwitchPoller(clientId, clientSecret, client, appToken) {
 
   private def fetchStreamsPage(
-    token: String,
     categoryId: String,
     cursor: Option[String],
-  ): IO[TwitchStreamsResponse] = {
+  )(using AppAccessToken): IO[TwitchStreamsResponse] = {
     val baseUri = uri"https://api.twitch.tv/helix/streams"
       .withQueryParam("game_id", categoryId)
       .withQueryParam("first", settings.streamsPageSize.toString)
-    client.expect[TwitchStreamsResponse](buildAuthedRequest(baseUri, token, cursor))
+    client.expect[TwitchStreamsResponse](buildAuthedRequest(baseUri, cursor))
   }
 
-  private def fetchLiveStreams(token: String, categoryIds: List[String]): IO[List[TwitchStream]] =
+  private def fetchLiveStreams(categoryIds: List[String])(using
+    AppAccessToken,
+  ): IO[List[TwitchStream]] =
     categoryIds
       .parTraverseN(settings.parallelCategories) { categoryId =>
-        fetchPaginated[TwitchStream](fetchStreamsPage(_, categoryId, _))(token)
+        fetchPaginated[TwitchStream](fetchStreamsPage(categoryId, _))
       }
       .map(_.flatten)
 
@@ -146,7 +147,7 @@ class StreamPoller(
       allCategories <- followRepo.getAllFollowedCategories
       _ <- IO.whenA(allCategories.nonEmpty) {
         for {
-          streams <- withTokenRefresh(token => fetchLiveStreams(token, allCategories.map(_.id)))
+          streams <- withTokenRefresh(fetchLiveStreams(allCategories.map(_.id)))
           liveIds = streams.collect { case s if s.`type` == "live" => s.id }.toSet
           _ <- notifiedStreamIds.set(liveIds)
           _ <- IO.println(
@@ -161,7 +162,7 @@ class StreamPoller(
       allCategories <- followRepo.getAllFollowedCategories
       _ <- IO.whenA(allCategories.nonEmpty) {
         for {
-          streams <- withTokenRefresh(token => fetchLiveStreams(token, allCategories.map(_.id)))
+          streams <- withTokenRefresh(fetchLiveStreams(allCategories.map(_.id)))
           now <- IO(Instant.now())
           alreadyNotified <- notifiedStreamIds.get
           (newStreams, updatedNotified) = StreamLogic.findNewStreams(
@@ -205,7 +206,7 @@ object StreamPoller {
     tagFilterRepo: TagFilterRepository,
   ): IO[StreamPoller] =
     for {
-      tokenRef <- IO.ref(Option.empty[String])
+      tokenRef <- IO.ref(Option.empty[AppAccessToken])
       notifiedRef <- IO.ref(Set.empty[String])
     } yield new StreamPoller(
       appToken = tokenRef,

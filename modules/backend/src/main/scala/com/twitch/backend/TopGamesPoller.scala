@@ -11,7 +11,7 @@ import com.twitch.backend.db.TopGamesRepository
 import com.twitch.core.{TwitchCategory, TwitchSearchCategoriesResponse}
 
 class TopGamesPoller(
-  appToken: Ref[IO, Option[String]],
+  appToken: Ref[IO, Option[AppAccessToken]],
   client: Client[IO],
   clientId: String,
   clientSecret: String,
@@ -20,16 +20,15 @@ class TopGamesPoller(
 ) extends TwitchPoller(clientId, clientSecret, client, appToken) {
 
   private def fetchTopGamesPage(
-    token: String,
     cursor: Option[String],
-  ): IO[TwitchSearchCategoriesResponse] = {
+  )(using AppAccessToken): IO[TwitchSearchCategoriesResponse] = {
     val baseUri = uri"https://api.twitch.tv/helix/games/top"
       .withQueryParam("first", "100")
-    client.expect[TwitchSearchCategoriesResponse](buildAuthedRequest(baseUri, token, cursor))
+    client.expect[TwitchSearchCategoriesResponse](buildAuthedRequest(baseUri, cursor))
   }
 
-  private def fetchAllTopGames(token: String): IO[List[TwitchCategory]] =
-    fetchPaginated[TwitchCategory](fetchTopGamesPage, limit = settings.topGamesCount)(token)
+  private def fetchAllTopGames(using AppAccessToken): IO[List[TwitchCategory]] =
+    fetchPaginated[TwitchCategory](fetchTopGamesPage, limit = settings.topGamesCount)
 
   private def pollOnce: IO[Unit] =
     for {
@@ -63,7 +62,7 @@ object TopGamesPoller {
     settings: AppSettings,
     topGamesRepo: TopGamesRepository,
   ): IO[TopGamesPoller] =
-    for tokenRef <- IO.ref(Option.empty[String])
+    for tokenRef <- IO.ref(Option.empty[AppAccessToken])
     yield new TopGamesPoller(
       appToken = tokenRef,
       client = client,
