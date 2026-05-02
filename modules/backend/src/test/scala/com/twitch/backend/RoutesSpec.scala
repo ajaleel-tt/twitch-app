@@ -201,7 +201,16 @@ class RoutesSpec extends CatsEffectSuite {
 
   private def createSessionFor(user: TwitchUser): IO[String] = {
     val sessionId = java.util.UUID.randomUUID().toString
-    env.sessionRepo.createSession(sessionId, user, "test-token", None, None) *>
+    val now = Instant.now()
+    env.sessionRepo.createSession(
+      sessionId,
+      user,
+      "test-token",
+      None,
+      None,
+      sessionExpiresAt = now.plusSeconds(testSettings.sessionTtl.toSeconds),
+      createdAt = now,
+    ) *>
       IO.pure(sessionId)
   }
 
@@ -614,7 +623,15 @@ class RoutesSpec extends CatsEffectSuite {
       expiredAt = java.time.Instant.now().minusSeconds(600)
       _ <- env
         .sessionRepo
-        .createSession(sid, testUser, "old-token", Some("refresh-tok"), Some(expiredAt))
+        .createSession(
+          sid,
+          testUser,
+          "old-token",
+          Some("refresh-tok"),
+          Some(expiredAt),
+          sessionExpiresAt = Instant.now().plusSeconds(testSettings.sessionTtl.toSeconds),
+          createdAt = Instant.now(),
+        )
       resp <- apiApp.run(
         withSession(Request[IO](Method.GET, uri"/search/categories?query=test"), sid),
       )

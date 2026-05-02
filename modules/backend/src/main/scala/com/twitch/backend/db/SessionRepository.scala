@@ -16,8 +16,8 @@ class SessionRepository(xa: Transactor[IO]) {
     accessToken: String,
     refreshToken: Option[String],
     tokenExpiresAt: Option[Instant],
-    sessionExpiresAt: Instant = Instant.now().plusSeconds(30L * 24L * 60L * 60L),
-    createdAt: Instant = Instant.now(),
+    sessionExpiresAt: Instant,
+    createdAt: Instant,
   ): IO[Unit] = {
     val now = createdAt.getEpochSecond
     val expiresAt = tokenExpiresAt.map(_.getEpochSecond)

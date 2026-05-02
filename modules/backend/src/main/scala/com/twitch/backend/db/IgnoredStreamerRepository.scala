@@ -14,19 +14,6 @@ class IgnoredStreamerRepository(xa: Transactor[IO], dialect: SqlDialect) {
       .to[List]
       .transact(xa)
 
-  def countIgnoredStreamers(userId: String): IO[Long] =
-    sql"SELECT COUNT(*) FROM ignored_streamers WHERE user_id = $userId"
-      .query[Long]
-      .unique
-      .transact(xa)
-
-  def ignoredStreamerExists(userId: String, streamerId: String): IO[Boolean] =
-    sql"SELECT COUNT(*) FROM ignored_streamers WHERE user_id = $userId AND streamer_id = $streamerId"
-      .query[Long]
-      .unique
-      .map(_ > 0)
-      .transact(xa)
-
   def addIgnoredStreamer(
     userId: String,
     streamerId: String,
@@ -48,6 +35,40 @@ class IgnoredStreamerRepository(xa: Transactor[IO], dialect: SqlDialect) {
         """
     }
     stmt.update.run.transact(xa).void
+  }
+
+  def addIgnoredStreamerIfUnderLimit(
+    userId: String,
+    streamerId: String,
+    streamerLogin: String,
+    streamerName: String,
+    maxIgnoredStreamers: Int,
+  ): IO[Boolean] = {
+    val stmt = dialect match {
+      case SqlDialect.Postgres =>
+        sql"""
+          INSERT INTO ignored_streamers (user_id, streamer_id, streamer_login, streamer_name)
+          SELECT $userId, $streamerId, $streamerLogin, $streamerName
+          WHERE EXISTS (
+            SELECT 1 FROM ignored_streamers WHERE user_id = $userId AND streamer_id = $streamerId
+          ) OR (
+            SELECT COUNT(*) FROM ignored_streamers WHERE user_id = $userId
+          ) < $maxIgnoredStreamers
+          ON CONFLICT (user_id, streamer_id) DO UPDATE SET streamer_login = EXCLUDED.streamer_login, streamer_name = EXCLUDED.streamer_name
+        """
+      case SqlDialect.H2 =>
+        sql"""
+          MERGE INTO ignored_streamers (user_id, streamer_id, streamer_login, streamer_name)
+          KEY(user_id, streamer_id)
+          SELECT $userId, $streamerId, $streamerLogin, $streamerName
+          WHERE EXISTS (
+            SELECT 1 FROM ignored_streamers WHERE user_id = $userId AND streamer_id = $streamerId
+          ) OR (
+            SELECT COUNT(*) FROM ignored_streamers WHERE user_id = $userId
+          ) < $maxIgnoredStreamers
+        """
+    }
+    stmt.update.run.map(_ > 0).transact(xa)
   }
 
   def removeIgnoredStreamer(userId: String, streamerId: String): IO[Unit] =

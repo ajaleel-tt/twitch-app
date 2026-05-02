@@ -53,14 +53,20 @@ class ApiRoutes(
   private def tooMany(resource: String): IO[Response[IO]] =
     TooManyRequests(s"Too many $resource. Remove an existing item before adding another.")
 
-  private def canOpenNotificationStream(userId: String, sessionId: String): IO[Boolean] =
-    notificationQueues.get.map { queues =>
+  private def registerNotificationQueue(
+    userId: String,
+    sessionId: String,
+    queue: Queue[IO, StreamNotification],
+  ): IO[Boolean] =
+    notificationQueues.modify { queues =>
       val replacingExistingSession = queues.contains(sessionId)
       val userConnectionCount = queues.values.count(_._1 == userId)
-      replacingExistingSession || (
+      val canRegister = replacingExistingSession || (
         queues.size < settings.sseMaxConnections &&
           userConnectionCount < settings.sseMaxConnectionsPerUser
       )
+      if canRegister then (queues + (sessionId -> (userId, queue)), true)
+      else (queues, false)
     }
 
   def routes: HttpRoutes[IO] = HttpRoutes.of[IO] {
@@ -81,14 +87,12 @@ class ApiRoutes(
       req.as[FollowRequest].flatMap { followReq =>
         sessionManager.getSession(req).flatMap {
           case Some(data) =>
-            followRepo.isFollowing(data.user.id, followReq.category.id).flatMap {
-              case true => followRepo.follow(data.user.id, followReq.category) *> Ok("Followed")
-              case false =>
-                followRepo.countFollowed(data.user.id).flatMap { count =>
-                  if count >= settings.maxFollowedCategories then tooMany("followed categories")
-                  else followRepo.follow(data.user.id, followReq.category) *> Ok("Followed")
-                }
-            }
+            followRepo
+              .followIfUnderLimit(data.user.id, followReq.category, settings.maxFollowedCategories)
+              .flatMap {
+                case true => Ok("Followed")
+                case false => tooMany("followed categories")
+              }
           case None => Forbidden("Not logged in")
         }
       }
@@ -145,14 +149,12 @@ class ApiRoutes(
               Validation.validateFilterType(body.filterType),
             ) match {
               case (Right(tag), Right(ft)) =>
-                tagFilterRepo.tagFilterExists(data.user.id, ft, tag).flatMap {
-                  case true => tagFilterRepo.addTagFilter(data.user.id, ft, tag) *> Ok("Filter added")
-                  case false =>
-                    tagFilterRepo.countTagFilters(data.user.id).flatMap { count =>
-                      if count >= settings.maxTagFilters then tooMany("tag filters")
-                      else tagFilterRepo.addTagFilter(data.user.id, ft, tag) *> Ok("Filter added")
-                    }
-                }
+                tagFilterRepo
+                  .addTagFilterIfUnderLimit(data.user.id, ft, tag, settings.maxTagFilters)
+                  .flatMap {
+                    case true => Ok("Filter added")
+                    case false => tooMany("tag filters")
+                  }
               case (Left(err), _) => BadRequest(err)
               case (_, Left(err)) => BadRequest(err)
             }
@@ -183,26 +185,18 @@ class ApiRoutes(
           case Some(data) =>
             Validation.validateNonEmpty(body.streamerId, "streamerId") match {
               case Right(streamerId) =>
-                ignoredStreamerRepo.ignoredStreamerExists(data.user.id, streamerId).flatMap {
-                  case true =>
-                    ignoredStreamerRepo.addIgnoredStreamer(
-                      data.user.id,
-                      streamerId,
-                      body.streamerLogin,
-                      body.streamerName,
-                    ) *> Ok("Streamer ignored")
-                  case false =>
-                    ignoredStreamerRepo.countIgnoredStreamers(data.user.id).flatMap { count =>
-                      if count >= settings.maxIgnoredStreamers then tooMany("ignored streamers")
-                      else
-                        ignoredStreamerRepo.addIgnoredStreamer(
-                          data.user.id,
-                          streamerId,
-                          body.streamerLogin,
-                          body.streamerName,
-                        ) *> Ok("Streamer ignored")
-                    }
-                }
+                ignoredStreamerRepo
+                  .addIgnoredStreamerIfUnderLimit(
+                    data.user.id,
+                    streamerId,
+                    body.streamerLogin,
+                    body.streamerName,
+                    settings.maxIgnoredStreamers,
+                  )
+                  .flatMap {
+                    case true => Ok("Streamer ignored")
+                    case false => tooMany("ignored streamers")
+                  }
               case Left(err) => BadRequest(err)
             }
           case None => Forbidden("Not logged in")
@@ -226,15 +220,17 @@ class ApiRoutes(
               Validation.validatePlatform(body.platform),
             ) match {
               case (Right(token), Right(platform)) =>
-                pushRepo.pushSubscriptionExists(data.user.id, token).flatMap {
-                  case true =>
-                    pushRepo.savePushSubscription(data.user.id, token, platform) *> Ok("Registered")
-                  case false =>
-                    pushRepo.countPushSubscriptions(data.user.id).flatMap { count =>
-                      if count >= settings.maxPushSubscriptions then tooMany("push subscriptions")
-                      else pushRepo.savePushSubscription(data.user.id, token, platform) *> Ok("Registered")
-                    }
-                }
+                pushRepo
+                  .savePushSubscriptionIfUnderLimit(
+                    data.user.id,
+                    token,
+                    platform,
+                    settings.maxPushSubscriptions,
+                  )
+                  .flatMap {
+                    case true => Ok("Registered")
+                    case false => tooMany("push subscriptions")
+                  }
               case (Left(err), _) => BadRequest(err)
               case (_, Left(err)) => BadRequest(err)
             }
@@ -264,33 +260,31 @@ class ApiRoutes(
         case Some(data) =>
           val sessionId =
             req.cookies.find(_.name == "session_id").map(_.content).getOrElse("unknown")
-          canOpenNotificationStream(data.user.id, sessionId).flatMap {
-            case false => tooMany("notification streams")
-            case true =>
-              Queue.bounded[IO, StreamNotification](settings.sseQueueCapacity).flatMap { queue =>
-                notificationQueues.update(_ + (sessionId -> (data.user.id, queue))) *> {
-                  val eventStream: fs2.Stream[IO, ServerSentEvent] =
-                    fs2
-                      .Stream
-                      .fromQueueUnterminated(queue)
-                      .map { n =>
-                        ServerSentEvent(
-                          data = Some(n.asJson.noSpaces),
-                          eventType = Some("stream-live"),
-                        )
-                      }
-                      .onFinalize(
-                        notificationQueues.update { queues =>
-                          queues.get(sessionId) match {
-                            case Some((_, currentQueue)) if currentQueue eq queue =>
-                              queues - sessionId
-                            case _ => queues
-                          }
-                        },
+          Queue.bounded[IO, StreamNotification](settings.sseQueueCapacity).flatMap { queue =>
+            registerNotificationQueue(data.user.id, sessionId, queue).flatMap {
+              case false => tooMany("notification streams")
+              case true =>
+                val eventStream: fs2.Stream[IO, ServerSentEvent] =
+                  fs2
+                    .Stream
+                    .fromQueueUnterminated(queue)
+                    .map { n =>
+                      ServerSentEvent(
+                        data = Some(n.asJson.noSpaces),
+                        eventType = Some("stream-live"),
                       )
-                  Ok(eventStream)
-                }
-              }
+                    }
+                    .onFinalize(
+                      notificationQueues.update { queues =>
+                        queues.get(sessionId) match {
+                          case Some((_, currentQueue)) if currentQueue eq queue =>
+                            queues - sessionId
+                          case _ => queues
+                        }
+                      },
+                    )
+                Ok(eventStream)
+            }
           }
       }
   }

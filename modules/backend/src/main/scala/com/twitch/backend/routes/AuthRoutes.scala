@@ -111,9 +111,10 @@ class AuthRoutes(
             userRepo.updateLastLogin(user.id, user.login, user.display_name, user.email) *>
               (if !existing.welcomeEmailSent then sendWelcomeEmailIfNeeded(user) else IO.unit)
         }
+        now <- IO.realTimeInstant
         sessionId = UUID.randomUUID().toString
-        tokenExpiresAt = Some(Instant.now().plusSeconds(tokenResponse.expires_in.toLong))
-        sessionExpiresAt = Instant.now().plusMillis(sessionTtl.toMillis)
+        tokenExpiresAt = Some(now.plusSeconds(tokenResponse.expires_in.toLong))
+        sessionExpiresAt = now.plusMillis(sessionTtl.toMillis)
         _ <- sessionRepo.createSession(
           sessionId,
           user,
@@ -121,6 +122,7 @@ class AuthRoutes(
           tokenResponse.refresh_token,
           tokenExpiresAt,
           sessionExpiresAt = sessionExpiresAt,
+          createdAt = now,
         )
         res <- Found(Location(uri"/")).map(
           _.addCookie(
@@ -141,7 +143,7 @@ class AuthRoutes(
           case _: InvalidOAuthStateException => BadRequest("Invalid OAuth state parameter")
           case _ =>
             IO.println(s"Auth flow failed: ${err.getMessage}") *>
-              InternalServerError(s"Auth flow failed. Check server logs. Error: ${err.getMessage}")
+              InternalServerError("Auth flow failed. Check server logs.")
         }
       }
   }

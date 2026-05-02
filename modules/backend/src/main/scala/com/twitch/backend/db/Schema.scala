@@ -43,11 +43,6 @@ object Schema {
     val migrateSessionsAddExpiresAt = sql"""
       ALTER TABLE sessions ADD COLUMN IF NOT EXISTS expires_at BIGINT
     """.update.run
-    val migrateSessionsExpiresAtBackfill = sql"""
-      UPDATE sessions
-      SET expires_at = created_at + 2592000
-      WHERE expires_at IS NULL
-    """.update.run
     val createUsers = sql"""
       CREATE TABLE IF NOT EXISTS users (
         user_id VARCHAR PRIMARY KEY,
@@ -103,7 +98,6 @@ object Schema {
       createIgnoredStreamers *>
       createSessions *>
       migrateSessionsAddExpiresAt *>
-      migrateSessionsExpiresAtBackfill *>
       createUsers *>
       migrateUsersAddLogin *>
       migrateUsersAddDisplayName *>

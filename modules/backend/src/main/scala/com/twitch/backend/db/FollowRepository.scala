@@ -15,18 +15,33 @@ class FollowRepository(xa: Transactor[IO], dialect: SqlDialect) {
       .to[List]
       .transact(xa)
 
-  def countFollowed(userId: String): IO[Long] =
-    sql"SELECT COUNT(*) FROM followed_categories WHERE user_id = $userId"
-      .query[Long]
-      .unique
-      .transact(xa)
-
-  def isFollowing(userId: String, categoryId: String): IO[Boolean] =
-    sql"SELECT COUNT(*) FROM followed_categories WHERE user_id = $userId AND category_id = $categoryId"
-      .query[Long]
-      .unique
-      .map(_ > 0)
-      .transact(xa)
+  def followIfUnderLimit(userId: String, category: TwitchCategory, maxFollowed: Int): IO[Boolean] = {
+    val stmt = dialect match {
+      case SqlDialect.Postgres =>
+        sql"""
+          INSERT INTO followed_categories (user_id, category_id, name, box_art_url)
+          SELECT $userId, ${category.id}, ${category.name}, ${category.box_art_url}
+          WHERE EXISTS (
+            SELECT 1 FROM followed_categories WHERE user_id = $userId AND category_id = ${category.id}
+          ) OR (
+            SELECT COUNT(*) FROM followed_categories WHERE user_id = $userId
+          ) < $maxFollowed
+          ON CONFLICT (user_id, category_id) DO UPDATE SET name = EXCLUDED.name, box_art_url = EXCLUDED.box_art_url
+        """
+      case SqlDialect.H2 =>
+        sql"""
+          MERGE INTO followed_categories (user_id, category_id, name, box_art_url)
+          KEY(user_id, category_id)
+          SELECT $userId, ${category.id}, ${category.name}, ${category.box_art_url}
+          WHERE EXISTS (
+            SELECT 1 FROM followed_categories WHERE user_id = $userId AND category_id = ${category.id}
+          ) OR (
+            SELECT COUNT(*) FROM followed_categories WHERE user_id = $userId
+          ) < $maxFollowed
+        """
+    }
+    stmt.update.run.map(_ > 0).transact(xa)
+  }
 
   def follow(userId: String, category: TwitchCategory): IO[Unit] = {
     val stmt = dialect match {

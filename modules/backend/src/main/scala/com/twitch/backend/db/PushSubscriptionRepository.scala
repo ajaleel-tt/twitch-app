@@ -31,28 +31,43 @@ class PushSubscriptionRepository(xa: Transactor[IO], dialect: SqlDialect) {
     stmt.update.run.transact(xa).void
   }
 
-  def countPushSubscriptions(userId: String): IO[Long] =
-    sql"SELECT COUNT(*) FROM push_subscriptions WHERE user_id = $userId"
-      .query[Long]
-      .unique
-      .transact(xa)
-
-  def pushSubscriptionExists(userId: String, deviceToken: String): IO[Boolean] =
-    sql"SELECT COUNT(*) FROM push_subscriptions WHERE user_id = $userId AND device_token = $deviceToken"
-      .query[Long]
-      .unique
-      .map(_ > 0)
-      .transact(xa)
+  def savePushSubscriptionIfUnderLimit(
+    userId: String,
+    deviceToken: String,
+    platform: String,
+    maxPushSubscriptions: Int,
+  ): IO[Boolean] = {
+    val id = java.util.UUID.randomUUID().toString
+    val now = Instant.now().getEpochSecond
+    val stmt = dialect match {
+      case SqlDialect.Postgres =>
+        sql"""
+          INSERT INTO push_subscriptions (id, user_id, device_token, platform, created_at)
+          SELECT $id, $userId, $deviceToken, $platform, $now
+          WHERE EXISTS (
+            SELECT 1 FROM push_subscriptions WHERE user_id = $userId AND device_token = $deviceToken
+          ) OR (
+            SELECT COUNT(*) FROM push_subscriptions WHERE user_id = $userId
+          ) < $maxPushSubscriptions
+          ON CONFLICT (user_id, device_token) DO UPDATE SET platform = EXCLUDED.platform
+        """
+      case SqlDialect.H2 =>
+        sql"""
+          MERGE INTO push_subscriptions (id, user_id, device_token, platform, created_at)
+          KEY(user_id, device_token)
+          SELECT $id, $userId, $deviceToken, $platform, $now
+          WHERE EXISTS (
+            SELECT 1 FROM push_subscriptions WHERE user_id = $userId AND device_token = $deviceToken
+          ) OR (
+            SELECT COUNT(*) FROM push_subscriptions WHERE user_id = $userId
+          ) < $maxPushSubscriptions
+        """
+    }
+    stmt.update.run.map(_ > 0).transact(xa)
+  }
 
   def deletePushSubscription(userId: String, deviceToken: String): IO[Unit] =
     sql"DELETE FROM push_subscriptions WHERE user_id = $userId AND device_token = $deviceToken"
-      .update
-      .run
-      .transact(xa)
-      .void
-
-  def deletePushSubscriptionByToken(deviceToken: String): IO[Unit] =
-    sql"DELETE FROM push_subscriptions WHERE device_token = $deviceToken"
       .update
       .run
       .transact(xa)
