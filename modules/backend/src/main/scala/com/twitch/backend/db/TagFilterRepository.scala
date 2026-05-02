@@ -14,6 +14,21 @@ class TagFilterRepository(xa: Transactor[IO], dialect: SqlDialect) {
       .to[List]
       .transact(xa)
 
+  def countTagFilters(userId: String): IO[Long] =
+    sql"SELECT COUNT(*) FROM tag_filters WHERE user_id = $userId"
+      .query[Long]
+      .unique
+      .transact(xa)
+
+  def tagFilterExists(userId: String, filterType: String, tag: String): IO[Boolean] = {
+    val normalizedTag = tag.trim.toLowerCase
+    sql"SELECT COUNT(*) FROM tag_filters WHERE user_id = $userId AND filter_type = $filterType AND tag = $normalizedTag"
+      .query[Long]
+      .unique
+      .map(_ > 0)
+      .transact(xa)
+  }
+
   def addTagFilter(userId: String, filterType: String, tag: String): IO[Unit] = {
     val normalizedTag = tag.trim.toLowerCase
     val stmt = dialect match {

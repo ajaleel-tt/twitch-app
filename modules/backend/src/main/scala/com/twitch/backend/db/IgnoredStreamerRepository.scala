@@ -14,6 +14,19 @@ class IgnoredStreamerRepository(xa: Transactor[IO], dialect: SqlDialect) {
       .to[List]
       .transact(xa)
 
+  def countIgnoredStreamers(userId: String): IO[Long] =
+    sql"SELECT COUNT(*) FROM ignored_streamers WHERE user_id = $userId"
+      .query[Long]
+      .unique
+      .transact(xa)
+
+  def ignoredStreamerExists(userId: String, streamerId: String): IO[Boolean] =
+    sql"SELECT COUNT(*) FROM ignored_streamers WHERE user_id = $userId AND streamer_id = $streamerId"
+      .query[Long]
+      .unique
+      .map(_ > 0)
+      .transact(xa)
+
   def addIgnoredStreamer(
     userId: String,
     streamerId: String,

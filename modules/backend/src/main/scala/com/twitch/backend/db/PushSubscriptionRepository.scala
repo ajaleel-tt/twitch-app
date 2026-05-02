@@ -31,7 +31,27 @@ class PushSubscriptionRepository(xa: Transactor[IO], dialect: SqlDialect) {
     stmt.update.run.transact(xa).void
   }
 
-  def deletePushSubscription(deviceToken: String): IO[Unit] =
+  def countPushSubscriptions(userId: String): IO[Long] =
+    sql"SELECT COUNT(*) FROM push_subscriptions WHERE user_id = $userId"
+      .query[Long]
+      .unique
+      .transact(xa)
+
+  def pushSubscriptionExists(userId: String, deviceToken: String): IO[Boolean] =
+    sql"SELECT COUNT(*) FROM push_subscriptions WHERE user_id = $userId AND device_token = $deviceToken"
+      .query[Long]
+      .unique
+      .map(_ > 0)
+      .transact(xa)
+
+  def deletePushSubscription(userId: String, deviceToken: String): IO[Unit] =
+    sql"DELETE FROM push_subscriptions WHERE user_id = $userId AND device_token = $deviceToken"
+      .update
+      .run
+      .transact(xa)
+      .void
+
+  def deletePushSubscriptionByToken(deviceToken: String): IO[Unit] =
     sql"DELETE FROM push_subscriptions WHERE device_token = $deviceToken"
       .update
       .run

@@ -15,6 +15,19 @@ class FollowRepository(xa: Transactor[IO], dialect: SqlDialect) {
       .to[List]
       .transact(xa)
 
+  def countFollowed(userId: String): IO[Long] =
+    sql"SELECT COUNT(*) FROM followed_categories WHERE user_id = $userId"
+      .query[Long]
+      .unique
+      .transact(xa)
+
+  def isFollowing(userId: String, categoryId: String): IO[Boolean] =
+    sql"SELECT COUNT(*) FROM followed_categories WHERE user_id = $userId AND category_id = $categoryId"
+      .query[Long]
+      .unique
+      .map(_ > 0)
+      .transact(xa)
+
   def follow(userId: String, category: TwitchCategory): IO[Unit] = {
     val stmt = dialect match {
       case SqlDialect.Postgres =>

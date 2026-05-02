@@ -81,24 +81,13 @@ self.addEventListener('notificationclick', (event) => {
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
 
-  // Never cache SSE streams or API mutations
-  if (url.pathname.startsWith('/api/notifications/stream')) {
+  if (event.request.method !== 'GET') {
     return;
   }
 
-  // Network-first for API calls — show fresh data when online, cached when offline
+  // Private routes must never enter CacheStorage.
   if (url.pathname.startsWith('/api/') || url.pathname.startsWith('/auth/')) {
-    event.respondWith(
-      fetch(event.request)
-        .then((response) => {
-          if (response.ok && event.request.method === 'GET') {
-            const clone = response.clone();
-            caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
-          }
-          return response;
-        })
-        .catch(() => caches.match(event.request))
-    );
+    event.respondWith(fetch(event.request));
     return;
   }
 

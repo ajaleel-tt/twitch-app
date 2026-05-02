@@ -85,7 +85,7 @@ object AppWiring {
 
     for {
       _ <- db.Schema.initDb(xa, config.dialect)
-      pendingOAuthStates <- IO.ref(Set.empty[String])
+      pendingOAuthStates <- IO.ref(Map.empty[String, java.time.Instant])
       notificationQueues <- IO.ref(Map.empty[String, (String, Queue[IO, StreamNotification])])
       pushService <- pushServiceIO
       twitchApi = new TwitchApiClient(
@@ -93,13 +93,16 @@ object AppWiring {
         clientId = config.clientId,
         clientSecret = config.clientSecret,
       )
-      sessionManager = new auth.SessionManager(sessionRepo, twitchApi)
+      sessionManager = new auth.SessionManager(sessionRepo, twitchApi, settings.sessionTtl)
       authRoutes = new routes.AuthRoutes(
         clientId = config.clientId,
         emailService = emailService,
+        maxPendingOAuthStates = settings.maxPendingOAuthStates,
+        oauthStateTtl = settings.oauthStateTtl,
         pendingOAuthStates = pendingOAuthStates,
         redirectUri = config.redirectUri,
         sessionRepo = sessionRepo,
+        sessionTtl = settings.sessionTtl,
         twitchApi = twitchApi,
         userRepo = userRepo,
       )

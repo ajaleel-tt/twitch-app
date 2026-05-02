@@ -1,5 +1,7 @@
 package com.twitch.backend
 
+import java.time.Instant
+
 import scala.concurrent.duration.*
 
 import cats.effect.*
@@ -27,6 +29,16 @@ class RoutesSpec extends CatsEffectSuite {
     parallelCategories = 5,
     streamsPageSize = 100,
     searchPageSize = 20,
+    oauthStateTtl = 10.minutes,
+    maxPendingOAuthStates = 1024,
+    sessionTtl = 30.days,
+    maxFollowedCategories = 500,
+    maxTagFilters = 100,
+    maxIgnoredStreamers = 500,
+    maxPushSubscriptions = 20,
+    sseMaxConnections = 1000,
+    sseMaxConnectionsPerUser = 5,
+    sseQueueCapacity = 100,
     sseReconnectDelay = 5.seconds,
     emailFrom = "test@example.com",
     emailFromName = "Test App",
@@ -68,9 +80,14 @@ class RoutesSpec extends CatsEffectSuite {
   case class TestEnv(
     authRoutes: routes.AuthRoutes,
     apiRoutes: routes.ApiRoutes,
+    followRepo: db.FollowRepository,
+    ignoredStreamerRepo: db.IgnoredStreamerRepository,
+    pushRepo: db.PushSubscriptionRepository,
     sessionRepo: db.SessionRepository,
+    tagFilterRepo: db.TagFilterRepository,
     topGamesRepo: db.TopGamesRepository,
-    pendingOAuthStates: Ref[IO, Set[String]],
+    userRepo: db.UserRepository,
+    pendingOAuthStates: Ref[IO, Map[String, Instant]],
     notificationQueues: Ref[IO, Map[String, (String, Queue[IO, StreamNotification])]],
   )
 
@@ -92,19 +109,22 @@ class RoutesSpec extends CatsEffectSuite {
       sessionRepo = new db.SessionRepository(xa)
       pushRepo = new db.PushSubscriptionRepository(xa, SqlDialect.H2)
       topGamesRepo = new db.TopGamesRepository(xa)
-      pendingStates <- Resource.eval(IO.ref(Set.empty[String]))
+      pendingStates <- Resource.eval(IO.ref(Map.empty[String, Instant]))
       notifQueues <- Resource.eval(
         IO.ref(Map.empty[String, (String, Queue[IO, StreamNotification])]),
       )
-      sessionManager = new auth.SessionManager(sessionRepo, stubTwitchApi)
+      sessionManager = new auth.SessionManager(sessionRepo, stubTwitchApi, testSettings.sessionTtl)
       authRoutes = new routes.AuthRoutes(
         clientId = "test-client-id",
-        redirectUri = "http://localhost:8080/auth/callback",
-        twitchApi = stubTwitchApi,
-        pendingOAuthStates = pendingStates,
-        userRepo = userRepo,
-        sessionRepo = sessionRepo,
         emailService = None,
+        maxPendingOAuthStates = testSettings.maxPendingOAuthStates,
+        oauthStateTtl = testSettings.oauthStateTtl,
+        pendingOAuthStates = pendingStates,
+        redirectUri = "http://localhost:8080/auth/callback",
+        sessionRepo = sessionRepo,
+        sessionTtl = testSettings.sessionTtl,
+        twitchApi = stubTwitchApi,
+        userRepo = userRepo,
       )
       apiRoutes = new routes.ApiRoutes(
         clientId = "test-client-id",
@@ -119,7 +139,19 @@ class RoutesSpec extends CatsEffectSuite {
         notificationQueues = notifQueues,
         settings = testSettings,
       )
-    } yield TestEnv(authRoutes, apiRoutes, sessionRepo, topGamesRepo, pendingStates, notifQueues),
+    } yield TestEnv(
+      authRoutes,
+      apiRoutes,
+      followRepo,
+      ignoredStreamerRepo,
+      pushRepo,
+      sessionRepo,
+      tagFilterRepo,
+      topGamesRepo,
+      userRepo,
+      pendingStates,
+      notifQueues,
+    ),
   )
 
   override def munitFixtures = List(envFixture)
@@ -129,10 +161,47 @@ class RoutesSpec extends CatsEffectSuite {
   private def authApp = env.authRoutes.routes.orNotFound
   private def apiApp = env.apiRoutes.routes.orNotFound
 
+  private def authAppWith(
+    pendingStates: Ref[IO, Map[String, Instant]],
+    maxPendingOAuthStates: Int,
+    oauthStateTtl: FiniteDuration = testSettings.oauthStateTtl,
+  ): HttpApp[IO] =
+    new routes.AuthRoutes(
+      clientId = "test-client-id",
+      emailService = None,
+      maxPendingOAuthStates = maxPendingOAuthStates,
+      oauthStateTtl = oauthStateTtl,
+      pendingOAuthStates = pendingStates,
+      redirectUri = "http://localhost:8080/auth/callback",
+      sessionRepo = env.sessionRepo,
+      sessionTtl = testSettings.sessionTtl,
+      twitchApi = stubTwitchApi,
+      userRepo = env.userRepo,
+    ).routes.orNotFound
+
+  private def apiAppWith(settings: AppSettings): HttpApp[IO] =
+    new routes.ApiRoutes(
+      clientId = "test-client-id",
+      followRepo = env.followRepo,
+      ignoredStreamerRepo = env.ignoredStreamerRepo,
+      notificationQueues = env.notificationQueues,
+      pushRepo = env.pushRepo,
+      sessionManager = new auth.SessionManager(env.sessionRepo, stubTwitchApi, settings.sessionTtl),
+      sessionRepo = env.sessionRepo,
+      settings = settings,
+      tagFilterRepo = env.tagFilterRepo,
+      topGamesRepo = env.topGamesRepo,
+      twitchApi = stubTwitchApi,
+    ).routes.orNotFound
+
   // Helper: create a session and return the cookie value
   private def createSession: IO[String] = {
+    createSessionFor(testUser)
+  }
+
+  private def createSessionFor(user: TwitchUser): IO[String] = {
     val sessionId = java.util.UUID.randomUUID().toString
-    env.sessionRepo.createSession(sessionId, testUser, "test-token", None, None) *>
+    env.sessionRepo.createSession(sessionId, user, "test-token", None, None) *>
       IO.pure(sessionId)
   }
 
@@ -198,6 +267,29 @@ class RoutesSpec extends CatsEffectSuite {
     }
   }
 
+  test("GET /user rejects and removes expired server session") {
+    for {
+      sid <- IO(java.util.UUID.randomUUID().toString)
+      createdAt = Instant.now().minusSeconds(testSettings.sessionTtl.toSeconds + 60)
+      _ <- env
+        .sessionRepo
+        .createSession(
+          sid,
+          testUser,
+          "test-token",
+          None,
+          None,
+          sessionExpiresAt = createdAt.plusSeconds(testSettings.sessionTtl.toSeconds),
+          createdAt = createdAt,
+        )
+      resp <- apiApp.run(withSession(Request[IO](Method.GET, uri"/user"), sid))
+      session <- env.sessionRepo.getSession(sid)
+    } yield {
+      assertEquals(resp.status, Status.NotFound)
+      assert(session.isEmpty, "Expired session should be removed")
+    }
+  }
+
   test("GET /config returns client ID without session") {
     for {
       resp <- apiApp.run(Request[IO](Method.GET, uri"/config"))
@@ -226,11 +318,40 @@ class RoutesSpec extends CatsEffectSuite {
     }
   }
 
+  test("GET /auth/login rejects when pending OAuth state cap is reached") {
+    for {
+      pending <- IO.ref(Map("existing-state" -> Instant.now()))
+      resp <- authAppWith(pending, maxPendingOAuthStates = 1).run(
+        Request[IO](Method.GET, uri"/auth/login"),
+      )
+      states <- pending.get
+    } yield {
+      assertEquals(resp.status, Status.TooManyRequests)
+      assertEquals(states.keySet, Set("existing-state"))
+    }
+  }
+
+  test("GET /auth/login cleans up expired OAuth states before enforcing cap") {
+    for {
+      pending <- IO.ref(Map("expired-state" -> Instant.now().minusSeconds(600)))
+      resp <- authAppWith(
+        pending,
+        maxPendingOAuthStates = 1,
+        oauthStateTtl = 1.minute,
+      ).run(Request[IO](Method.GET, uri"/auth/login"))
+      states <- pending.get
+    } yield {
+      assertEquals(resp.status, Status.Found)
+      assertEquals(states.size, 1)
+      assert(!states.contains("expired-state"))
+    }
+  }
+
   test("GET /auth/callback rejects invalid state") {
     for resp <- authApp.run(
         Request[IO](Method.GET, uri"/auth/callback?code=test-code&state=bad-state"),
       )
-    yield assertEquals(resp.status, Status.InternalServerError)
+    yield assertEquals(resp.status, Status.BadRequest)
   }
 
   test("GET /auth/callback with valid state creates session and redirects") {
@@ -238,7 +359,7 @@ class RoutesSpec extends CatsEffectSuite {
       // First, do a login to register a state
       loginResp <- authApp.run(Request[IO](Method.GET, uri"/auth/login"))
       pendingStates <- env.pendingOAuthStates.get
-      state = pendingStates.head
+      state = pendingStates.keys.head
       callbackResp <- authApp.run(
         Request[IO](Method.GET, Uri.unsafeFromString(s"/auth/callback?code=test-code&state=$state")),
       )
@@ -292,6 +413,29 @@ class RoutesSpec extends CatsEffectSuite {
     }
   }
 
+  test("POST /follow enforces per-user category cap") {
+    val user = testUser.copy(id = "follow-cap-user")
+    val app = apiAppWith(testSettings.copy(maxFollowedCategories = 1))
+    val cat1 = TwitchCategory("cap_cat_1", "Cap One", "https://img.test/one.jpg")
+    val cat2 = TwitchCategory("cap_cat_2", "Cap Two", "https://img.test/two.jpg")
+    for {
+      sid <- createSessionFor(user)
+      first <- app.run(
+        withSession(Request[IO](Method.POST, uri"/follow").withEntity(FollowRequest(cat1)), sid),
+      )
+      duplicate <- app.run(
+        withSession(Request[IO](Method.POST, uri"/follow").withEntity(FollowRequest(cat1)), sid),
+      )
+      second <- app.run(
+        withSession(Request[IO](Method.POST, uri"/follow").withEntity(FollowRequest(cat2)), sid),
+      )
+    } yield {
+      assertEquals(first.status, Status.Ok)
+      assertEquals(duplicate.status, Status.Ok)
+      assertEquals(second.status, Status.TooManyRequests)
+    }
+  }
+
   // ── Routes + Database: tag filter CRUD ──────────────────────────────
 
   test("POST /tag-filters/add persists filter, GET /tag-filters returns it") {
@@ -338,6 +482,39 @@ class RoutesSpec extends CatsEffectSuite {
     }
   }
 
+  test("POST /tag-filters/add enforces per-user filter cap") {
+    val user = testUser.copy(id = "filter-cap-user")
+    val app = apiAppWith(testSettings.copy(maxTagFilters = 1))
+    for {
+      sid <- createSessionFor(user)
+      first <- app.run(
+        withSession(
+          Request[IO](Method.POST, uri"/tag-filters/add")
+            .withEntity(AddTagFilterRequest("include", "english")),
+          sid,
+        ),
+      )
+      duplicate <- app.run(
+        withSession(
+          Request[IO](Method.POST, uri"/tag-filters/add")
+            .withEntity(AddTagFilterRequest("include", "english")),
+          sid,
+        ),
+      )
+      second <- app.run(
+        withSession(
+          Request[IO](Method.POST, uri"/tag-filters/add")
+            .withEntity(AddTagFilterRequest("exclude", "speedrun")),
+          sid,
+        ),
+      )
+    } yield {
+      assertEquals(first.status, Status.Ok)
+      assertEquals(duplicate.status, Status.Ok)
+      assertEquals(second.status, Status.TooManyRequests)
+    }
+  }
+
   // ── Tag filter validation ───────────────────────────────────────────
 
   test("POST /tag-filters/add rejects empty tag") {
@@ -377,6 +554,41 @@ class RoutesSpec extends CatsEffectSuite {
         ),
       )
     } yield assertEquals(resp.status, Status.BadRequest)
+  }
+
+  // ── Ignored streamer limits ────────────────────────────────────────
+
+  test("POST /ignored-streamers/add enforces per-user ignored streamer cap") {
+    val user = testUser.copy(id = "ignored-cap-user")
+    val app = apiAppWith(testSettings.copy(maxIgnoredStreamers = 1))
+    for {
+      sid <- createSessionFor(user)
+      first <- app.run(
+        withSession(
+          Request[IO](Method.POST, uri"/ignored-streamers/add")
+            .withEntity(AddIgnoredStreamerRequest("streamer-1", "one", "One")),
+          sid,
+        ),
+      )
+      duplicate <- app.run(
+        withSession(
+          Request[IO](Method.POST, uri"/ignored-streamers/add")
+            .withEntity(AddIgnoredStreamerRequest("streamer-1", "one", "One")),
+          sid,
+        ),
+      )
+      second <- app.run(
+        withSession(
+          Request[IO](Method.POST, uri"/ignored-streamers/add")
+            .withEntity(AddIgnoredStreamerRequest("streamer-2", "two", "Two")),
+          sid,
+        ),
+      )
+    } yield {
+      assertEquals(first.status, Status.Ok)
+      assertEquals(duplicate.status, Status.Ok)
+      assertEquals(second.status, Status.TooManyRequests)
+    }
   }
 
   // ── Search categories ───────────────────────────────────────────────
@@ -434,6 +646,72 @@ class RoutesSpec extends CatsEffectSuite {
     }
   }
 
+  // ── Push subscriptions ─────────────────────────────────────────────
+
+  test("POST /push/register enforces per-user push subscription cap") {
+    val user = testUser.copy(id = "push-cap-user")
+    val app = apiAppWith(testSettings.copy(maxPushSubscriptions = 1))
+    for {
+      sid <- createSessionFor(user)
+      first <- app.run(
+        withSession(
+          Request[IO](Method.POST, uri"/push/register")
+            .withEntity(PushRegisterRequest("token-1", "web")),
+          sid,
+        ),
+      )
+      duplicate <- app.run(
+        withSession(
+          Request[IO](Method.POST, uri"/push/register")
+            .withEntity(PushRegisterRequest("token-1", "web")),
+          sid,
+        ),
+      )
+      second <- app.run(
+        withSession(
+          Request[IO](Method.POST, uri"/push/register")
+            .withEntity(PushRegisterRequest("token-2", "web")),
+          sid,
+        ),
+      )
+    } yield {
+      assertEquals(first.status, Status.Ok)
+      assertEquals(duplicate.status, Status.Ok)
+      assertEquals(second.status, Status.TooManyRequests)
+    }
+  }
+
+  test("POST /push/unregister only deletes the current user's token") {
+    val user1 = testUser.copy(id = "push-owner-user")
+    val user2 = testUser.copy(id = "push-other-user")
+    for {
+      sid <- createSessionFor(user1)
+      _ <- env.pushRepo.savePushSubscription(user1.id, "owner-token", "web")
+      _ <- env.pushRepo.savePushSubscription(user2.id, "other-token", "web")
+      otherDelete <- apiApp.run(
+        withSession(
+          Request[IO](Method.POST, uri"/push/unregister")
+            .withEntity(PushUnregisterRequest("other-token")),
+          sid,
+        ),
+      )
+      otherSubs <- env.pushRepo.getPushSubscriptionsForUsers(Set(user2.id))
+      ownerDelete <- apiApp.run(
+        withSession(
+          Request[IO](Method.POST, uri"/push/unregister")
+            .withEntity(PushUnregisterRequest("owner-token")),
+          sid,
+        ),
+      )
+      ownerSubs <- env.pushRepo.getPushSubscriptionsForUsers(Set(user1.id))
+    } yield {
+      assertEquals(otherDelete.status, Status.Ok)
+      assert(otherSubs.exists(_.deviceToken == "other-token"))
+      assertEquals(ownerDelete.status, Status.Ok)
+      assert(!ownerSubs.exists(_.deviceToken == "owner-token"))
+    }
+  }
+
   // ── SSE queue registration and cleanup ──────────────────────────────
 
   test("GET /notifications/stream registers queue for logged-in user") {
@@ -448,6 +726,22 @@ class RoutesSpec extends CatsEffectSuite {
       assert(queues.contains(sid), "Expected notification queue registered for session")
       val (userId, _) = queues(sid)
       assertEquals(userId, "user1")
+    }
+  }
+
+  test("GET /notifications/stream enforces per-user connection cap") {
+    val user = testUser.copy(id = "sse-cap-user")
+    val app = apiAppWith(testSettings.copy(sseMaxConnectionsPerUser = 1))
+    for {
+      _ <- env.notificationQueues.set(Map.empty)
+      sid1 <- createSessionFor(user)
+      sid2 <- createSessionFor(user)
+      first <- app.run(withSession(Request[IO](Method.GET, uri"/notifications/stream"), sid1))
+      second <- app.run(withSession(Request[IO](Method.GET, uri"/notifications/stream"), sid2))
+      _ <- env.notificationQueues.set(Map.empty)
+    } yield {
+      assertEquals(first.status, Status.Ok)
+      assertEquals(second.status, Status.TooManyRequests)
     }
   }
 

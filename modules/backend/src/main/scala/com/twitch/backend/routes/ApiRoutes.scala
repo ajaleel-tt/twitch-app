@@ -50,6 +50,19 @@ class ApiRoutes(
   private object SearchQueryParamMatcher extends QueryParamDecoderMatcher[String]("query")
   private object AfterQueryParamMatcher extends OptionalQueryParamDecoderMatcher[String]("after")
 
+  private def tooMany(resource: String): IO[Response[IO]] =
+    TooManyRequests(s"Too many $resource. Remove an existing item before adding another.")
+
+  private def canOpenNotificationStream(userId: String, sessionId: String): IO[Boolean] =
+    notificationQueues.get.map { queues =>
+      val replacingExistingSession = queues.contains(sessionId)
+      val userConnectionCount = queues.values.count(_._1 == userId)
+      replacingExistingSession || (
+        queues.size < settings.sseMaxConnections &&
+          userConnectionCount < settings.sseMaxConnectionsPerUser
+      )
+    }
+
   def routes: HttpRoutes[IO] = HttpRoutes.of[IO] {
     case GET -> Root / "config" =>
       Ok(AppConfig(clientId))
@@ -68,7 +81,14 @@ class ApiRoutes(
       req.as[FollowRequest].flatMap { followReq =>
         sessionManager.getSession(req).flatMap {
           case Some(data) =>
-            followRepo.follow(data.user.id, followReq.category) *> Ok("Followed")
+            followRepo.isFollowing(data.user.id, followReq.category.id).flatMap {
+              case true => followRepo.follow(data.user.id, followReq.category) *> Ok("Followed")
+              case false =>
+                followRepo.countFollowed(data.user.id).flatMap { count =>
+                  if count >= settings.maxFollowedCategories then tooMany("followed categories")
+                  else followRepo.follow(data.user.id, followReq.category) *> Ok("Followed")
+                }
+            }
           case None => Forbidden("Not logged in")
         }
       }
@@ -125,7 +145,14 @@ class ApiRoutes(
               Validation.validateFilterType(body.filterType),
             ) match {
               case (Right(tag), Right(ft)) =>
-                tagFilterRepo.addTagFilter(data.user.id, ft, tag) *> Ok("Filter added")
+                tagFilterRepo.tagFilterExists(data.user.id, ft, tag).flatMap {
+                  case true => tagFilterRepo.addTagFilter(data.user.id, ft, tag) *> Ok("Filter added")
+                  case false =>
+                    tagFilterRepo.countTagFilters(data.user.id).flatMap { count =>
+                      if count >= settings.maxTagFilters then tooMany("tag filters")
+                      else tagFilterRepo.addTagFilter(data.user.id, ft, tag) *> Ok("Filter added")
+                    }
+                }
               case (Left(err), _) => BadRequest(err)
               case (_, Left(err)) => BadRequest(err)
             }
@@ -155,13 +182,27 @@ class ApiRoutes(
         sessionManager.getSession(req).flatMap {
           case Some(data) =>
             Validation.validateNonEmpty(body.streamerId, "streamerId") match {
-              case Right(_) =>
-                ignoredStreamerRepo.addIgnoredStreamer(
-                  data.user.id,
-                  body.streamerId,
-                  body.streamerLogin,
-                  body.streamerName,
-                ) *> Ok("Streamer ignored")
+              case Right(streamerId) =>
+                ignoredStreamerRepo.ignoredStreamerExists(data.user.id, streamerId).flatMap {
+                  case true =>
+                    ignoredStreamerRepo.addIgnoredStreamer(
+                      data.user.id,
+                      streamerId,
+                      body.streamerLogin,
+                      body.streamerName,
+                    ) *> Ok("Streamer ignored")
+                  case false =>
+                    ignoredStreamerRepo.countIgnoredStreamers(data.user.id).flatMap { count =>
+                      if count >= settings.maxIgnoredStreamers then tooMany("ignored streamers")
+                      else
+                        ignoredStreamerRepo.addIgnoredStreamer(
+                          data.user.id,
+                          streamerId,
+                          body.streamerLogin,
+                          body.streamerName,
+                        ) *> Ok("Streamer ignored")
+                    }
+                }
               case Left(err) => BadRequest(err)
             }
           case None => Forbidden("Not logged in")
@@ -180,12 +221,22 @@ class ApiRoutes(
       req.as[PushRegisterRequest].flatMap { body =>
         sessionManager.getSession(req).flatMap {
           case Some(data) =>
-            Validation.validatePlatform(body.platform) match {
-              case Right(platform) =>
-                pushRepo.savePushSubscription(data.user.id, body.token, platform) *> Ok(
-                  "Registered",
-                )
-              case Left(err) => BadRequest(err)
+            (
+              Validation.validateNonEmpty(body.token, "token"),
+              Validation.validatePlatform(body.platform),
+            ) match {
+              case (Right(token), Right(platform)) =>
+                pushRepo.pushSubscriptionExists(data.user.id, token).flatMap {
+                  case true =>
+                    pushRepo.savePushSubscription(data.user.id, token, platform) *> Ok("Registered")
+                  case false =>
+                    pushRepo.countPushSubscriptions(data.user.id).flatMap { count =>
+                      if count >= settings.maxPushSubscriptions then tooMany("push subscriptions")
+                      else pushRepo.savePushSubscription(data.user.id, token, platform) *> Ok("Registered")
+                    }
+                }
+              case (Left(err), _) => BadRequest(err)
+              case (_, Left(err)) => BadRequest(err)
             }
           case None => Forbidden("Not logged in")
         }
@@ -193,8 +244,12 @@ class ApiRoutes(
     case req @ POST -> Root / "push" / "unregister" =>
       req.as[PushUnregisterRequest].flatMap { body =>
         sessionManager.getSession(req).flatMap {
-          case Some(_) =>
-            pushRepo.deletePushSubscription(body.token) *> Ok("Unregistered")
+          case Some(data) =>
+            Validation.validateNonEmpty(body.token, "token") match {
+              case Right(token) =>
+                pushRepo.deletePushSubscription(data.user.id, token) *> Ok("Unregistered")
+              case Left(err) => BadRequest(err)
+            }
           case None => Forbidden("Not logged in")
         }
       }
@@ -209,18 +264,33 @@ class ApiRoutes(
         case Some(data) =>
           val sessionId =
             req.cookies.find(_.name == "session_id").map(_.content).getOrElse("unknown")
-          Queue.unbounded[IO, StreamNotification].flatMap { queue =>
-            notificationQueues.update(_ + (sessionId -> (data.user.id, queue))) *> {
-              val eventStream: fs2.Stream[IO, ServerSentEvent] =
-                fs2
-                  .Stream
-                  .fromQueueUnterminated(queue)
-                  .map { n =>
-                    ServerSentEvent(data = Some(n.asJson.noSpaces), eventType = Some("stream-live"))
-                  }
-                  .onFinalize(notificationQueues.update(_ - sessionId))
-              Ok(eventStream)
-            }
+          canOpenNotificationStream(data.user.id, sessionId).flatMap {
+            case false => tooMany("notification streams")
+            case true =>
+              Queue.bounded[IO, StreamNotification](settings.sseQueueCapacity).flatMap { queue =>
+                notificationQueues.update(_ + (sessionId -> (data.user.id, queue))) *> {
+                  val eventStream: fs2.Stream[IO, ServerSentEvent] =
+                    fs2
+                      .Stream
+                      .fromQueueUnterminated(queue)
+                      .map { n =>
+                        ServerSentEvent(
+                          data = Some(n.asJson.noSpaces),
+                          eventType = Some("stream-live"),
+                        )
+                      }
+                      .onFinalize(
+                        notificationQueues.update { queues =>
+                          queues.get(sessionId) match {
+                            case Some((_, currentQueue)) if currentQueue eq queue =>
+                              queues - sessionId
+                            case _ => queues
+                          }
+                        },
+                      )
+                  Ok(eventStream)
+                }
+              }
           }
       }
   }

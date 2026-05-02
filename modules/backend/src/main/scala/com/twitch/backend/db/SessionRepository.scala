@@ -16,18 +16,21 @@ class SessionRepository(xa: Transactor[IO]) {
     accessToken: String,
     refreshToken: Option[String],
     tokenExpiresAt: Option[Instant],
+    sessionExpiresAt: Instant = Instant.now().plusSeconds(30L * 24L * 60L * 60L),
+    createdAt: Instant = Instant.now(),
   ): IO[Unit] = {
-    val now = Instant.now().getEpochSecond
+    val now = createdAt.getEpochSecond
     val expiresAt = tokenExpiresAt.map(_.getEpochSecond)
+    val sessionExpiresAtEpoch = sessionExpiresAt.getEpochSecond
     sql"""
-      INSERT INTO sessions (session_id, user_id, user_login, display_name, profile_image_url, access_token, refresh_token, token_expires_at, created_at)
-      VALUES ($sessionId, ${user.id}, ${user.login}, ${user.display_name}, ${user.profile_image_url}, $accessToken, $refreshToken, $expiresAt, $now)
+      INSERT INTO sessions (session_id, user_id, user_login, display_name, profile_image_url, access_token, refresh_token, token_expires_at, created_at, expires_at)
+      VALUES ($sessionId, ${user.id}, ${user.login}, ${user.display_name}, ${user.profile_image_url}, $accessToken, $refreshToken, $expiresAt, $now, $sessionExpiresAtEpoch)
     """.update.run.transact(xa).void
   }
 
   def getSession(sessionId: String): IO[Option[SessionRow]] =
     sql"""
-      SELECT session_id, user_id, user_login, display_name, profile_image_url, access_token, refresh_token, token_expires_at, created_at
+      SELECT session_id, user_id, user_login, display_name, profile_image_url, access_token, refresh_token, token_expires_at, created_at, expires_at
       FROM sessions WHERE session_id = $sessionId
     """.query[SessionRow].option.transact(xa)
 
@@ -63,6 +66,7 @@ case class SessionRow(
   refreshToken: Option[String],
   tokenExpiresAt: Option[Long],
   createdAt: Long,
+  expiresAt: Option[Long],
 ) {
   def toUser: TwitchUser = TwitchUser(userId, userLogin, displayName, profileImageUrl)
 }

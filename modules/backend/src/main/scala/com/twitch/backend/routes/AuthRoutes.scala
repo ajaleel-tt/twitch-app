@@ -1,5 +1,7 @@
 package com.twitch.backend.routes
 
+import scala.concurrent.duration.FiniteDuration
+
 import java.time.Instant
 import java.util.UUID
 
@@ -17,14 +19,47 @@ import com.twitch.core.TwitchUser
 class AuthRoutes(
   clientId: String,
   emailService: Option[EmailNotifier],
-  pendingOAuthStates: Ref[IO, Set[String]],
+  maxPendingOAuthStates: Int,
+  oauthStateTtl: FiniteDuration,
+  pendingOAuthStates: Ref[IO, Map[String, Instant]],
   redirectUri: String,
   sessionRepo: SessionRepository,
+  sessionTtl: FiniteDuration,
   twitchApi: TwitchApi,
   userRepo: UserRepository,
 ) {
 
   private val secureCookies = redirectUri.startsWith("https")
+  private val oauthStateTtlMillis = oauthStateTtl.toMillis
+
+  private class InvalidOAuthStateException
+      extends RuntimeException("Invalid OAuth state parameter")
+
+  private def activeOAuthStates(
+    now: Instant,
+    states: Map[String, Instant],
+  ): Map[String, Instant] =
+    states.filter { case (_, createdAt) =>
+      createdAt.plusMillis(oauthStateTtlMillis).isAfter(now)
+    }
+
+  private def rememberOAuthState(state: String): IO[Boolean] =
+    IO.realTimeInstant.flatMap { now =>
+      pendingOAuthStates.modify { states =>
+        val activeStates = activeOAuthStates(now, states)
+        if activeStates.size >= maxPendingOAuthStates then (activeStates, false)
+        else (activeStates.updated(state, now), true)
+      }
+    }
+
+  private def consumeOAuthState(state: String): IO[Boolean] =
+    IO.realTimeInstant.flatMap { now =>
+      pendingOAuthStates.modify { states =>
+        val activeStates = activeOAuthStates(now, states)
+        if activeStates.contains(state) then (activeStates - state, true)
+        else (activeStates, false)
+      }
+    }
 
   private def sendWelcomeEmailIfNeeded(user: TwitchUser): IO[Unit] =
     (user.email, emailService) match {
@@ -50,18 +85,18 @@ class AuthRoutes(
       val state = UUID.randomUUID().toString
       val authorizeUri =
         s"https://id.twitch.tv/oauth2/authorize?client_id=$clientId&redirect_uri=$redirectUri&response_type=code&scope=user:read:email&state=$state"
-      pendingOAuthStates.update(_ + state) *>
-        Found(Location(Uri.unsafeFromString(authorizeUri)))
+      rememberOAuthState(state).flatMap {
+        case true => Found(Location(Uri.unsafeFromString(authorizeUri)))
+        case false =>
+          TooManyRequests("Too many pending OAuth login attempts. Please try again shortly.")
+      }
 
     case GET -> Root / "auth" / "callback" :? CodeQueryParamMatcher(code) +& StateQueryParamMatcher(
           state,
         ) =>
       val flow = for {
-        pending <- pendingOAuthStates.get
-        _ <- IO.raiseUnless(pending.contains(state))(
-          new RuntimeException("Invalid OAuth state parameter"),
-        )
-        _ <- pendingOAuthStates.update(_ - state)
+        validState <- consumeOAuthState(state)
+        _ <- IO.raiseUnless(validState)(new InvalidOAuthStateException)
         _ <- IO.println("Received auth callback")
         tokenResponse <- twitchApi.exchangeCode(code, redirectUri)
         _ <- IO.println("Token exchange successful")
@@ -78,12 +113,14 @@ class AuthRoutes(
         }
         sessionId = UUID.randomUUID().toString
         tokenExpiresAt = Some(Instant.now().plusSeconds(tokenResponse.expires_in.toLong))
+        sessionExpiresAt = Instant.now().plusMillis(sessionTtl.toMillis)
         _ <- sessionRepo.createSession(
           sessionId,
           user,
           tokenResponse.access_token,
           tokenResponse.refresh_token,
           tokenExpiresAt,
+          sessionExpiresAt = sessionExpiresAt,
         )
         res <- Found(Location(uri"/")).map(
           _.addCookie(
@@ -100,8 +137,12 @@ class AuthRoutes(
       } yield res
 
       flow.handleErrorWith { err =>
-        IO.println(s"Auth flow failed: ${err.getMessage}") *>
-          InternalServerError(s"Auth flow failed. Check server logs. Error: ${err.getMessage}")
+        err match {
+          case _: InvalidOAuthStateException => BadRequest("Invalid OAuth state parameter")
+          case _ =>
+            IO.println(s"Auth flow failed: ${err.getMessage}") *>
+              InternalServerError(s"Auth flow failed. Check server logs. Error: ${err.getMessage}")
+        }
       }
   }
 

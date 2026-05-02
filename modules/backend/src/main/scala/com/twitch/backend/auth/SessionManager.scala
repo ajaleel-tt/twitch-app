@@ -1,5 +1,7 @@
 package com.twitch.backend.auth
 
+import scala.concurrent.duration.FiniteDuration
+
 import java.time.Instant
 
 import cats.effect.*
@@ -17,26 +19,45 @@ case class SessionData(
   user: TwitchUser,
 )
 
-class SessionManager(sessionRepo: SessionRepository, twitchApi: TwitchApi) {
+class SessionManager(
+  sessionRepo: SessionRepository,
+  twitchApi: TwitchApi,
+  sessionTtl: FiniteDuration,
+) {
+
+  private val fallbackSessionTtlSeconds = sessionTtl.toSeconds
 
   def getSession(req: Request[IO]): IO[Option[SessionData]] =
     req.cookies.find(_.name == "session_id").map(_.content) match {
       case None => IO.pure(None)
       case Some(sid) =>
-        sessionRepo
-          .getSession(sid)
-          .map(
-            _.map(row =>
-              SessionData(
-                accessToken = row.accessToken,
-                refreshToken = row.refreshToken,
-                sessionId = row.sessionId,
-                tokenExpiresAt = row.tokenExpiresAt,
-                user = row.toUser,
-              ),
-            ),
-          )
+        IO.realTimeInstant.flatMap { now =>
+          sessionRepo
+            .getSession(sid)
+            .flatMap {
+              case Some(row) if isExpired(row, now) =>
+                sessionRepo.deleteSession(row.sessionId).as(None)
+              case Some(row) =>
+                IO.pure(
+                  Some(
+                    SessionData(
+                      accessToken = row.accessToken,
+                      refreshToken = row.refreshToken,
+                      sessionId = row.sessionId,
+                      tokenExpiresAt = row.tokenExpiresAt,
+                      user = row.toUser,
+                    ),
+                  ),
+                )
+              case None => IO.pure(None)
+            }
+        }
     }
+
+  private def isExpired(row: com.twitch.backend.db.SessionRow, now: Instant): Boolean = {
+    val expiresAt = row.expiresAt.getOrElse(row.createdAt + fallbackSessionTtlSeconds)
+    now.getEpochSecond >= expiresAt
+  }
 
   def refreshTokenIfNeeded(data: SessionData): IO[SessionData] = {
     val needsRefresh =

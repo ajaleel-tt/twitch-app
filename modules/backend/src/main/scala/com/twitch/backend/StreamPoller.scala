@@ -92,7 +92,7 @@ class StreamPoller(
             sseFilters,
             sseIgnored,
           )
-          filtered.traverse_(queue.offer)
+          filtered.traverse_(queue.tryOffer(_).void)
       }
       // Push delivery: database-driven, independent of SSE connections
       _ <- pushService.fold(IO.unit) { ps =>

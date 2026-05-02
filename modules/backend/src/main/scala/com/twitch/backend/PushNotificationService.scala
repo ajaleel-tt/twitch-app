@@ -115,12 +115,15 @@ class PushNotificationService(
     s"$signingInput.$signature"
   }
 
-  def sendToDevice(token: String, notification: StreamNotification): IO[SendResult] =
+  def sendToDevice(
+    subscription: PushSubscriptionRow,
+    notification: StreamNotification,
+  ): IO[SendResult] =
     getAccessToken
       .flatMap { accessToken =>
         val payload = Json.obj(
           "message" -> Json.obj(
-            "token" -> token.asJson,
+            "token" -> subscription.deviceToken.asJson,
             "data" -> Json.obj(
               "title" -> s"${notification.streamerName} is live!".asJson,
               "body" -> s"Playing ${notification.categoryName}: ${notification.streamTitle}".asJson,
@@ -143,9 +146,13 @@ class PushNotificationService(
           else
             resp.as[String].flatMap { body =>
               if resp.status.code == 404 || body.contains("UNREGISTERED") then
-                pushRepo.deletePushSubscription(token).as(SendResult.InvalidToken)
+                pushRepo
+                  .deletePushSubscription(subscription.userId, subscription.deviceToken)
+                  .as(SendResult.InvalidToken)
               else
-                IO.println(s"FCM error for token ${token.take(10)}...: ${resp.status} $body")
+                IO.println(
+                  s"FCM error for token ${subscription.deviceToken.take(10)}...: ${resp.status} $body",
+                )
                   .as(SendResult.Failed)
             }
         }
@@ -161,7 +168,7 @@ class PushNotificationService(
     val sends = for {
       sub <- subscriptions
       notif <- notifications
-    } yield sendToDevice(sub.deviceToken, notif)
+    } yield sendToDevice(sub, notif)
     sends.parTraverseN(parallelSends)(identity).void
   }
 
