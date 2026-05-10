@@ -41,28 +41,30 @@ class SessionManager(sessionRepo: SessionRepository, twitchApi: TwitchApi) {
   def refreshTokenIfNeeded(data: SessionData): IO[SessionData] = {
     val needsRefresh =
       data.tokenExpiresAt.exists(expiresAt => Instant.now().getEpochSecond >= expiresAt - 300)
-    if !needsRefresh || data.refreshToken.isEmpty then IO.pure(data)
-    else
-      twitchApi
-        .refreshToken(data.refreshToken.get)
-        .flatMap { tokenResp =>
-          val expiresAt = Some(Instant.now().plusSeconds(tokenResp.expires_in.toLong))
-          sessionRepo
-            .updateSessionToken(
-              data.sessionId,
-              tokenResp.access_token,
-              tokenResp.refresh_token.orElse(data.refreshToken),
-              expiresAt,
-            )
-            .as(
-              data.copy(
-                accessToken = tokenResp.access_token,
-                refreshToken = tokenResp.refresh_token.orElse(data.refreshToken),
-                tokenExpiresAt = expiresAt.map(_.getEpochSecond),
-              ),
-            )
-        }
-        .handleErrorWith(_ => IO.pure(data))
+    data.refreshToken match {
+      case Some(refreshToken) if needsRefresh =>
+        twitchApi
+          .refreshToken(refreshToken)
+          .flatMap { tokenResp =>
+            val expiresAt = Some(Instant.now().plusSeconds(tokenResp.expires_in.toLong))
+            sessionRepo
+              .updateSessionToken(
+                data.sessionId,
+                tokenResp.access_token,
+                tokenResp.refresh_token.orElse(data.refreshToken),
+                expiresAt,
+              )
+              .as(
+                data.copy(
+                  accessToken = tokenResp.access_token,
+                  refreshToken = tokenResp.refresh_token.orElse(data.refreshToken),
+                  tokenExpiresAt = expiresAt.map(_.getEpochSecond),
+                ),
+              )
+          }
+          .handleErrorWith(_ => IO.pure(data))
+      case _ => IO.pure(data)
+    }
   }
 
 }
