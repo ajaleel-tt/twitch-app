@@ -315,50 +315,38 @@ class StreamLogicSpec extends FunSuite {
   )
 
   test("filteredNotificationsForUser: returns notifications only for followed categories") {
-    val followedMap = Map("alice" -> Set("game1", "game3"))
-    val result = StreamLogic.filteredNotificationsForUser(
-      "alice",
-      byCategoryId,
-      followedMap,
-      Map.empty,
-      Map.empty,
+    val prefs = UserPreferences(
+      followed = Map("alice" -> Set("game1", "game3")),
+      filters = Map.empty,
+      ignored = Map.empty,
     )
+    val result = StreamLogic.filteredNotificationsForUser("alice", byCategoryId, prefs)
     assertEquals(result.map(_.categoryId).toSet, Set("game1", "game3"))
   }
 
   test("filteredNotificationsForUser: returns empty when user follows no categories") {
-    val followedMap = Map("alice" -> Set.empty[String])
-    val result = StreamLogic.filteredNotificationsForUser(
-      "alice",
-      byCategoryId,
-      followedMap,
-      Map.empty,
-      Map.empty,
+    val prefs = UserPreferences(
+      followed = Map("alice" -> Set.empty[String]),
+      filters = Map.empty,
+      ignored = Map.empty,
     )
+    val result = StreamLogic.filteredNotificationsForUser("alice", byCategoryId, prefs)
     assertEquals(result, Nil)
   }
 
   test("filteredNotificationsForUser: returns empty when user is not in followedMap") {
-    val result = StreamLogic.filteredNotificationsForUser(
-      "unknown",
-      byCategoryId,
-      Map.empty,
-      Map.empty,
-      Map.empty,
-    )
+    val prefs = UserPreferences(followed = Map.empty, filters = Map.empty, ignored = Map.empty)
+    val result = StreamLogic.filteredNotificationsForUser("unknown", byCategoryId, prefs)
     assertEquals(result, Nil)
   }
 
   test("filteredNotificationsForUser: applies tag filters") {
-    val followedMap = Map("alice" -> Set("game1", "game2", "game3"))
-    val filtersMap = Map("alice" -> List(TagFilter("include", "english")))
-    val result = StreamLogic.filteredNotificationsForUser(
-      "alice",
-      byCategoryId,
-      followedMap,
-      filtersMap,
-      Map.empty,
+    val prefs = UserPreferences(
+      followed = Map("alice" -> Set("game1", "game2", "game3")),
+      filters = Map("alice" -> List(TagFilter("include", "english"))),
+      ignored = Map.empty,
     )
+    val result = StreamLogic.filteredNotificationsForUser("alice", byCategoryId, prefs)
     assertEquals(result.map(_.categoryId).toSet, Set("game1", "game3"))
   }
 
@@ -384,15 +372,12 @@ class StreamLogicSpec extends FunSuite {
       viewerCount = 200,
     )
     val byCategory = Map("game1" -> List(n1, n2))
-    val followedMap = Map("alice" -> Set("game1"))
-    val ignoredMap = Map("alice" -> Set("u1"))
-    val result = StreamLogic.filteredNotificationsForUser(
-      "alice",
-      byCategory,
-      followedMap,
-      Map.empty,
-      ignoredMap,
+    val prefs = UserPreferences(
+      followed = Map("alice" -> Set("game1")),
+      filters = Map.empty,
+      ignored = Map("alice" -> Set("u1")),
     )
+    val result = StreamLogic.filteredNotificationsForUser("alice", byCategory, prefs)
     assertEquals(result.map(_.streamerId), List("u2"))
   }
 
@@ -433,16 +418,12 @@ class StreamLogicSpec extends FunSuite {
       viewerCount = 300,
     )
     val byCategory = Map("game1" -> List(n1, n2), "game2" -> List(n3))
-    val followedMap = Map("alice" -> Set("game1", "game2"))
-    val filtersMap = Map("alice" -> List(TagFilter("include", "english")))
-    val ignoredMap = Map("alice" -> Set("u1"))
-    val result = StreamLogic.filteredNotificationsForUser(
-      "alice",
-      byCategory,
-      followedMap,
-      filtersMap,
-      ignoredMap,
+    val prefs = UserPreferences(
+      followed = Map("alice" -> Set("game1", "game2")),
+      filters = Map("alice" -> List(TagFilter("include", "english"))),
+      ignored = Map("alice" -> Set("u1")),
     )
+    val result = StreamLogic.filteredNotificationsForUser("alice", byCategory, prefs)
     assertEquals(result.map(_.streamerId), List("u2"))
   }
 
