@@ -53,10 +53,10 @@ class SessionManager(
             val expiresAt = Some(Instant.now().plusSeconds(tokenResp.expires_in.toLong))
             sessionRepo
               .updateSessionToken(
-                data.sessionId,
-                tokenResp.access_token,
-                tokenResp.refresh_token.orElse(data.refreshToken),
-                expiresAt,
+                sessionId = data.sessionId,
+                accessToken = tokenResp.access_token,
+                refreshToken = tokenResp.refresh_token.orElse(data.refreshToken),
+                tokenExpiresAt = expiresAt,
               )
               .as(
                 data.copy(
