@@ -31,6 +31,7 @@ class RoutesSpec extends CatsEffectSuite {
     emailFrom = "test@example.com",
     emailFromName = "Test App",
     pushParallelSends = 10,
+    tokenRefreshSkew = 5.minutes,
     topGamesCount = 200,
     topGamesPollInterval = 3.hours,
   )
@@ -96,7 +97,7 @@ class RoutesSpec extends CatsEffectSuite {
       notifQueues <- Resource.eval(
         IO.ref(Map.empty[String, (String, Queue[IO, StreamNotification])]),
       )
-      sessionManager = new auth.SessionManager(sessionRepo, stubTwitchApi)
+      sessionManager = new auth.SessionManager(sessionRepo, stubTwitchApi, 5.minutes)
       authRoutes = new routes.AuthRoutes(
         clientId = "test-client-id",
         redirectUri = "http://localhost:8080/auth/callback",

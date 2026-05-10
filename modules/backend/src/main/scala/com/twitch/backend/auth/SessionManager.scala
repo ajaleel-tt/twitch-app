@@ -1,6 +1,7 @@
 package com.twitch.backend.auth
 
 import java.time.Instant
+import scala.concurrent.duration.FiniteDuration
 
 import cats.effect.*
 import org.http4s.*
@@ -17,7 +18,11 @@ case class SessionData(
   user: TwitchUser,
 )
 
-class SessionManager(sessionRepo: SessionRepository, twitchApi: TwitchApi) {
+class SessionManager(
+  sessionRepo: SessionRepository,
+  twitchApi: TwitchApi,
+  tokenRefreshSkew: FiniteDuration,
+) {
 
   def getSession(req: Request[IO]): IO[Option[SessionData]] =
     req.cookies.find(_.name == "session_id").map(_.content) match {
@@ -40,7 +45,9 @@ class SessionManager(sessionRepo: SessionRepository, twitchApi: TwitchApi) {
 
   def refreshTokenIfNeeded(data: SessionData): IO[SessionData] = {
     val needsRefresh =
-      data.tokenExpiresAt.exists(expiresAt => Instant.now().getEpochSecond >= expiresAt - 300)
+      data.tokenExpiresAt.exists(expiresAt =>
+        Instant.now().getEpochSecond >= expiresAt - tokenRefreshSkew.toSeconds,
+      )
     data.refreshToken match {
       case Some(refreshToken) if needsRefresh =>
         twitchApi
