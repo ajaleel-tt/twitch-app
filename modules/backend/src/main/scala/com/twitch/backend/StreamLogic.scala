@@ -6,11 +6,16 @@ import java.time.Instant
 
 import com.twitch.core.{StreamNotification, TagFilter, TwitchStream}
 
-case class UserPreferences(
-  followed: Map[String, Set[String]],
-  filters: Map[String, List[TagFilter]],
-  ignored: Map[String, Set[String]],
+case class NotificationCriteria(
+  followed: Set[String],
+  filters: List[TagFilter],
+  ignored: Set[String],
 )
+
+object NotificationCriteria {
+  val empty: NotificationCriteria =
+    NotificationCriteria(followed = Set.empty, filters = Nil, ignored = Set.empty)
+}
 
 object StreamLogic {
 
@@ -74,14 +79,13 @@ object StreamLogic {
   def filteredNotificationsForUser(
     userId: String,
     byCategoryId: Map[String, List[StreamNotification]],
-    prefs: UserPreferences,
+    criteriaByUser: Map[String, NotificationCriteria],
   ): List[StreamNotification] = {
-    val userCategoryIds = prefs.followed.getOrElse(userId, Set.empty)
-    val relevantNotifications =
-      userCategoryIds.flatMap(id => byCategoryId.getOrElse(id, Nil)).toList
+    val criteria = criteriaByUser.getOrElse(userId, NotificationCriteria.empty)
+    val relevant = criteria.followed.flatMap(id => byCategoryId.getOrElse(id, Nil)).toList
     applyIgnoredStreamers(
-      applyTagFilters(relevantNotifications, prefs.filters.getOrElse(userId, Nil)),
-      prefs.ignored.getOrElse(userId, Set.empty),
+      applyTagFilters(relevant, criteria.filters),
+      criteria.ignored,
     )
   }
 

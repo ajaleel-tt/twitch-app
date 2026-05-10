@@ -315,38 +315,43 @@ class StreamLogicSpec extends FunSuite {
   )
 
   test("filteredNotificationsForUser: returns notifications only for followed categories") {
-    val prefs = UserPreferences(
-      followed = Map("alice" -> Set("game1", "game3")),
-      filters = Map.empty,
-      ignored = Map.empty,
+    val criteria = Map(
+      "alice" -> NotificationCriteria(
+        followed = Set("game1", "game3"),
+        filters = Nil,
+        ignored = Set.empty,
+      ),
     )
-    val result = StreamLogic.filteredNotificationsForUser("alice", byCategoryId, prefs)
+    val result = StreamLogic.filteredNotificationsForUser("alice", byCategoryId, criteria)
     assertEquals(result.map(_.categoryId).toSet, Set("game1", "game3"))
   }
 
   test("filteredNotificationsForUser: returns empty when user follows no categories") {
-    val prefs = UserPreferences(
-      followed = Map("alice" -> Set.empty[String]),
-      filters = Map.empty,
-      ignored = Map.empty,
+    val criteria = Map(
+      "alice" -> NotificationCriteria(
+        followed = Set.empty,
+        filters = Nil,
+        ignored = Set.empty,
+      ),
     )
-    val result = StreamLogic.filteredNotificationsForUser("alice", byCategoryId, prefs)
+    val result = StreamLogic.filteredNotificationsForUser("alice", byCategoryId, criteria)
     assertEquals(result, Nil)
   }
 
-  test("filteredNotificationsForUser: returns empty when user is not in followedMap") {
-    val prefs = UserPreferences(followed = Map.empty, filters = Map.empty, ignored = Map.empty)
-    val result = StreamLogic.filteredNotificationsForUser("unknown", byCategoryId, prefs)
+  test("filteredNotificationsForUser: returns empty when user is not in criteria map") {
+    val result = StreamLogic.filteredNotificationsForUser("unknown", byCategoryId, Map.empty)
     assertEquals(result, Nil)
   }
 
   test("filteredNotificationsForUser: applies tag filters") {
-    val prefs = UserPreferences(
-      followed = Map("alice" -> Set("game1", "game2", "game3")),
-      filters = Map("alice" -> List(TagFilter("include", "english"))),
-      ignored = Map.empty,
+    val criteria = Map(
+      "alice" -> NotificationCriteria(
+        followed = Set("game1", "game2", "game3"),
+        filters = List(TagFilter("include", "english")),
+        ignored = Set.empty,
+      ),
     )
-    val result = StreamLogic.filteredNotificationsForUser("alice", byCategoryId, prefs)
+    val result = StreamLogic.filteredNotificationsForUser("alice", byCategoryId, criteria)
     assertEquals(result.map(_.categoryId).toSet, Set("game1", "game3"))
   }
 
@@ -372,12 +377,14 @@ class StreamLogicSpec extends FunSuite {
       viewerCount = 200,
     )
     val byCategory = Map("game1" -> List(n1, n2))
-    val prefs = UserPreferences(
-      followed = Map("alice" -> Set("game1")),
-      filters = Map.empty,
-      ignored = Map("alice" -> Set("u1")),
+    val criteria = Map(
+      "alice" -> NotificationCriteria(
+        followed = Set("game1"),
+        filters = Nil,
+        ignored = Set("u1"),
+      ),
     )
-    val result = StreamLogic.filteredNotificationsForUser("alice", byCategory, prefs)
+    val result = StreamLogic.filteredNotificationsForUser("alice", byCategory, criteria)
     assertEquals(result.map(_.streamerId), List("u2"))
   }
 
@@ -418,12 +425,14 @@ class StreamLogicSpec extends FunSuite {
       viewerCount = 300,
     )
     val byCategory = Map("game1" -> List(n1, n2), "game2" -> List(n3))
-    val prefs = UserPreferences(
-      followed = Map("alice" -> Set("game1", "game2")),
-      filters = Map("alice" -> List(TagFilter("include", "english"))),
-      ignored = Map("alice" -> Set("u1")),
+    val criteria = Map(
+      "alice" -> NotificationCriteria(
+        followed = Set("game1", "game2"),
+        filters = List(TagFilter("include", "english")),
+        ignored = Set("u1"),
+      ),
     )
-    val result = StreamLogic.filteredNotificationsForUser("alice", byCategory, prefs)
+    val result = StreamLogic.filteredNotificationsForUser("alice", byCategory, criteria)
     assertEquals(result.map(_.streamerId), List("u2"))
   }
 
