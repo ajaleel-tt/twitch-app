@@ -47,13 +47,14 @@ class SessionManager(sessionRepo: SessionRepository, twitchApi: TwitchApi) {
         .refreshToken(data.refreshToken.get)
         .flatMap { tokenResp =>
           val expiresAt = Some(Instant.now().plusSeconds(tokenResp.expires_in.toLong))
-          sessionRepo.updateSessionToken(
-            data.sessionId,
-            tokenResp.access_token,
-            tokenResp.refresh_token.orElse(data.refreshToken),
-            expiresAt,
-          ) *>
-            IO.pure(
+          sessionRepo
+            .updateSessionToken(
+              data.sessionId,
+              tokenResp.access_token,
+              tokenResp.refresh_token.orElse(data.refreshToken),
+              expiresAt,
+            )
+            .as(
               data.copy(
                 accessToken = tokenResp.access_token,
                 refreshToken = tokenResp.refresh_token.orElse(data.refreshToken),
