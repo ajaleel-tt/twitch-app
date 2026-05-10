@@ -53,26 +53,23 @@ class StreamPoller(
       }
       .map(_.flatten)
 
-  private def loadUserPreferences(userIds: Set[String]): IO[UserPreferences] =
-    for {
-      followedByUser <- userIds
-        .toList
-        .traverse(uid => followRepo.getFollowed(uid).map(cats => uid -> cats.map(_.id).toSet))
-      filtersByUser <- userIds
-        .toList
-        .traverse(uid => tagFilterRepo.getTagFilters(uid).map(filters => uid -> filters))
-      ignoredByUser <- userIds
-        .toList
-        .traverse(uid =>
-          ignoredStreamerRepo
-            .getIgnoredStreamers(uid)
-            .map(list => uid -> list.map(_.streamerId).toSet),
+  private def loadNotificationCriteria(
+    userIds: Set[String],
+  ): IO[Map[String, NotificationCriteria]] =
+    userIds
+      .toList
+      .traverse { uid =>
+        for {
+          followed <- followRepo.getFollowed(uid).map(_.map(_.id).toSet)
+          filters <- tagFilterRepo.getTagFilters(uid)
+          ignored <- ignoredStreamerRepo.getIgnoredStreamers(uid).map(_.map(_.streamerId).toSet)
+        } yield uid -> NotificationCriteria(
+          followed = followed,
+          filters = filters,
+          ignored = ignored,
         )
-    } yield UserPreferences(
-      followed = followedByUser.toMap,
-      filters = filtersByUser.toMap,
-      ignored = ignoredByUser.toMap,
-    )
+      }
+      .map(_.toMap)
 
   private def broadcastNotifications(notifications: List[StreamNotification]): IO[Unit] = {
     val byCategoryId = notifications.groupBy(_.categoryId)
@@ -80,13 +77,13 @@ class StreamPoller(
       // SSE delivery: scoped to connected users
       queues <- notificationQueues.get
       sseUserIds = queues.values.map(_._1).toSet
-      ssePrefs <- loadUserPreferences(sseUserIds)
+      sseCriteria <- loadNotificationCriteria(sseUserIds)
       _ <- queues.values.toList.traverse_ {
         case (userId, queue) =>
           val filtered = StreamLogic.filteredNotificationsForUser(
             userId,
             byCategoryId,
-            ssePrefs,
+            sseCriteria,
           )
           filtered.traverse_(queue.offer)
       }
@@ -94,8 +91,8 @@ class StreamPoller(
       _ <- pushService.fold(IO.unit) { ps =>
         (for {
           pushUserIds <- followRepo.getUsersFollowingCategories(byCategoryId.keySet)
-          pushPrefs <- loadUserPreferences(pushUserIds)
-          _ <- sendPushNotifications(ps, notifications, pushPrefs)
+          pushCriteria <- loadNotificationCriteria(pushUserIds)
+          _ <- sendPushNotifications(ps, notifications, pushCriteria)
         } yield ())
           .handleErrorWith(e => IO.println(s"Push notification error: ${e.getMessage}"))
           .start
@@ -107,12 +104,11 @@ class StreamPoller(
   private def sendPushNotifications(
     ps: PushService,
     notifications: List[StreamNotification],
-    prefs: UserPreferences,
+    criteriaByUser: Map[String, NotificationCriteria],
   ): IO[Unit] = {
     val byCategoryId = notifications.groupBy(_.categoryId)
-    val allFollowingUserIds = prefs.followed.filter {
-      case (_, catIds) =>
-        catIds.exists(byCategoryId.contains)
+    val allFollowingUserIds = criteriaByUser.filter {
+      case (_, c) => c.followed.exists(byCategoryId.contains)
     }.keySet
     pushRepo
       .getPushSubscriptionsForUsers(allFollowingUserIds)
@@ -123,7 +119,7 @@ class StreamPoller(
             val filtered = StreamLogic.filteredNotificationsForUser(
               userId,
               byCategoryId,
-              prefs,
+              criteriaByUser,
             )
             if filtered.nonEmpty then ps.sendBatch(userSubs, filtered)
             else IO.unit
