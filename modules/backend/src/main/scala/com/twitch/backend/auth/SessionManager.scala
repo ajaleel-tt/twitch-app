@@ -43,13 +43,10 @@ class SessionManager(
           )
     }
 
-  def refreshTokenIfNeeded(data: SessionData): IO[SessionData] = {
-    val needsRefresh =
-      data.tokenExpiresAt.exists(expiresAt =>
-        Instant.now().getEpochSecond >= expiresAt - tokenRefreshSkew.toSeconds,
-      )
+  def refreshTokenIfNeeded(data: SessionData): IO[SessionData] =
     data.refreshToken match {
-      case Some(refreshToken) if needsRefresh =>
+      case Some(refreshToken)
+          if SessionManager.needsRefresh(data.tokenExpiresAt, Instant.now(), tokenRefreshSkew) =>
         twitchApi
           .refreshToken(refreshToken)
           .flatMap { tokenResp =>
@@ -72,6 +69,16 @@ class SessionManager(
           .handleErrorWith(_ => IO.pure(data))
       case _ => IO.pure(data)
     }
-  }
+
+}
+
+object SessionManager {
+
+  def needsRefresh(
+    tokenExpiresAt: Option[Long],
+    now: Instant,
+    skew: FiniteDuration,
+  ): Boolean =
+    tokenExpiresAt.exists(expiresAt => now.getEpochSecond >= expiresAt - skew.toSeconds)
 
 }
