@@ -74,7 +74,7 @@ class SessionManager(
 
 object SessionManager {
 
-  def needsRefresh(
+  private[auth] def needsRefresh(
     tokenExpiresAt: Option[Long],
     now: Instant,
     skew: FiniteDuration,
