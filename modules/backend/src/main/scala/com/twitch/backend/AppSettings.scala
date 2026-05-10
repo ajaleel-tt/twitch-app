@@ -15,6 +15,7 @@ case class AppSettings(
   searchPageSize: Int,
   sseReconnectDelay: FiniteDuration,
   streamsPageSize: Int,
+  tokenRefreshSkew: FiniteDuration,
   topGamesCount: Int,
   topGamesPollInterval: FiniteDuration,
 )
@@ -33,6 +34,7 @@ object AppSettings {
       searchPageSize = config.getInt("search.page-size"),
       sseReconnectDelay = config.getDuration("sse.reconnect-delay").toMillis.millis,
       streamsPageSize = config.getInt("poller.streams-page-size"),
+      tokenRefreshSkew = config.getDuration("auth.token-refresh-skew").toMillis.millis,
       topGamesCount = config.getInt("top-games.count"),
       topGamesPollInterval = config.getDuration("top-games.poll-interval").toMillis.millis,
     )

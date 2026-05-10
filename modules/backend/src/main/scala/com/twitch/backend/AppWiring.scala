@@ -93,7 +93,7 @@ object AppWiring {
         clientId = config.clientId,
         clientSecret = config.clientSecret,
       )
-      sessionManager = new auth.SessionManager(sessionRepo, twitchApi)
+      sessionManager = new auth.SessionManager(sessionRepo, twitchApi, settings.tokenRefreshSkew)
       authRoutes = new routes.AuthRoutes(
         clientId = config.clientId,
         emailService = emailService,
