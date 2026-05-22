@@ -65,11 +65,17 @@ firebase/
 ### Capacitor ###
 www/
 ios/*
+!ios/debug.xcconfig
 !ios/App/
 ios/App/*
+!ios/App/CapApp-SPM/
+!ios/App/CapApp-SPM/**
 !ios/App/App/
 !ios/App/App.xcodeproj/
 ios/App/App.xcodeproj/*
+!ios/App/App.xcodeproj/xcshareddata/
+!ios/App/App.xcodeproj/xcshareddata/xcschemes/
+!ios/App/App.xcodeproj/xcshareddata/xcschemes/*.xcscheme
 !ios/App/App.xcodeproj/project.pbxproj
 ios/App/App/*
 !ios/App/App/AppDelegate.swift
@@ -79,6 +85,8 @@ ios/App/App/*
 !ios/App/App/Assets.xcassets/
 ios/App/App/Assets.xcassets/*
 !ios/App/App/Assets.xcassets/AppIcon.appiconset/
+!ios/App/App/Assets.xcassets/Splash.imageset/
+!ios/App/App/Assets.xcassets/Splash.imageset/**
 android/*
 !android/app/
 android/app/*
