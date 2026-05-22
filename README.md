@@ -157,6 +157,8 @@ npx cap sync ios
 npx cap open ios
 ```
 
+In a fresh clone, run `./build-mobile.sh` before opening Xcode or pressing Run. The Xcode project references generated Capacitor resources (`App/public`, `App/capacitor.config.json`, and `App/config.xml`) that are intentionally ignored and refreshed by the build script.
+
 In Xcode: select a simulator or physical device from the toolbar dropdown and press Cmd+R to build and run.
 
 **Testing on a physical iPhone:**
@@ -165,11 +167,13 @@ In Xcode: select a simulator or physical device from the toolbar dropdown and pr
 3. In Xcode: Settings > Accounts > sign in with your Apple ID and select your development team
 4. Select your phone from the device dropdown, then Cmd+R
 
-**Push notifications:** The iOS Simulator cannot receive push notifications — a physical device is required.
+**Push notifications:** iOS 16+ simulators on macOS 13+ with Apple silicon or a T2 chip can receive APNs sandbox notifications. A physical iPhone is still required before trusting TestFlight/App Store production delivery.
 
 **APNs setup (required for iOS push):**
 1. In [Apple Developer](https://developer.apple.com/account/resources/authkeys/list) > Keys > create a new key with APNs enabled, download the `.p8` file
 2. In [Firebase Console](https://console.firebase.google.com) > Project Settings > Cloud Messaging > Apple app configuration > upload the `.p8` key with your Key ID and Team ID
+3. Add the iOS app to Firebase and add its `GoogleService-Info.plist` to the Xcode target
+4. Add Firebase Messaging to the iOS target and update `AppDelegate.swift` to forward the Firebase registration token, not the raw APNs device token, because the backend sends via FCM
 
 ### Tech Stack
 
