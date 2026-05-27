@@ -172,10 +172,20 @@ In Xcode: select a simulator or physical device from the toolbar dropdown and pr
 **APNs setup (required for iOS push):**
 1. In [Apple Developer](https://developer.apple.com/account/resources/authkeys/list) > Keys > create a new key with APNs enabled, download the `.p8` file
 2. In [Firebase Console](https://console.firebase.google.com) > Project Settings > Cloud Messaging > Apple app configuration > upload the `.p8` key with your Key ID and Team ID
-3. Add the iOS app to Firebase with bundle ID `com.twitchnotify.app`
-4. Download the Firebase `GoogleService-Info.plist` and place it at `ios/App/App/GoogleService-Info.plist`
-5. Do not commit the real plist. `ios/App/App/GoogleService-Info.plist.example` documents the expected file shape, and the Xcode target copies the real local plist into the app bundle when it is present.
-6. Build and run on a physical iPhone or TestFlight build, allow notifications, then confirm `/api/push/register` receives an FCM registration token for platform `ios`.
+3. In Apple Developer > Certificates, Identifiers & Profiles > Identifiers, confirm the App ID `com.twitchnotify.app` has Push Notifications enabled
+4. Add the iOS app to Firebase with bundle ID `com.twitchnotify.app`
+5. Download the Firebase `GoogleService-Info.plist` and place it at `ios/App/App/GoogleService-Info.plist`
+6. Do not commit the real plist. `ios/App/App/GoogleService-Info.plist.example` documents the expected file shape, and the Xcode target copies the real local plist into the app bundle when it is present.
+7. Build and run on a physical iPhone or TestFlight build, allow notifications, then confirm `/api/push/register` receives an FCM registration token for platform `ios`.
+
+**Before uploading to TestFlight:**
+
+1. Run `./build-mobile.sh`
+2. Confirm `ios/App/App/GoogleService-Info.plist` exists locally
+3. Archive the shared `App` scheme in Release configuration
+4. Export the archive as an App Store Connect `.ipa`
+5. Run `scripts/verify-ios-ipa.sh path/to/App.ipa` before distributing it. For a TestFlight/App Store build, the verifier must report `aps-environment: production` and `GoogleService-Info.plist: present`.
+6. Upload the verified `.ipa` through Transporter or Xcode Organizer
 
 **iOS push architecture:** `AppDelegate.swift` configures Firebase, maps the APNs device token into Firebase Messaging, then forwards the Firebase Messaging registration token through Capacitor's push registration event. The backend sends iOS subscriptions as visible FCM/APNs alert pushes with `apns-push-type: alert` and `apns-priority: 10`, while Android keeps the existing data-only payload path. Verify foreground, background, and terminated delivery on a real iPhone before relying on production notifications.
 
