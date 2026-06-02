@@ -134,34 +134,52 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
         completionHandler([.banner, .sound])
     }
 
-    // Handle notification action button taps. The "Ignore streamer" action calls the
-    // backend (authenticated by the device's FCM token) and lets iOS dismiss the
-    // notification; the app is not brought to the foreground.
+    // Handle notification taps. "Ignore streamer" calls the backend (authenticated by the
+    // device's FCM token) without foregrounding the app; tapping the body opens the stream.
+    // AppDelegate owns the UNUserNotificationCenterDelegate (handleApplicationNotifications
+    // is disabled in capacitor.config), so this runs reliably — even on a background launch
+    // — and the completion handler is held until the network request finishes.
     func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse, withCompletionHandler completionHandler: @escaping () -> Void) {
-        guard response.actionIdentifier == AppDelegate.ignoreActionId else {
-            completionHandler()
-            return
-        }
-
         let userInfo = response.notification.request.content.userInfo
-        guard
-            let streamerId = userInfo["streamerId"] as? String,
-            !streamerId.isEmpty,
-            let token = UserDefaults.standard.string(forKey: AppDelegate.fcmTokenKey)
-        else {
+
+        switch response.actionIdentifier {
+        case AppDelegate.ignoreActionId:
+            guard
+                let streamerId = userInfo["streamerId"] as? String,
+                !streamerId.isEmpty,
+                let token = UserDefaults.standard.string(forKey: AppDelegate.fcmTokenKey)
+            else {
+                completionHandler()
+                return
+            }
+            ignoreStreamer(
+                token: token,
+                streamerId: streamerId,
+                streamerLogin: userInfo["streamerLogin"] as? String ?? "",
+                streamerName: userInfo["streamerName"] as? String ?? "",
+                completion: completionHandler
+            )
+        case UNNotificationDefaultActionIdentifier:
+            openStream(from: userInfo, completion: completionHandler)
+        default:
             completionHandler()
+        }
+    }
+
+    // Tapping the notification body opens the stream in the Twitch app (replaces the
+    // previous JS deep-link, now that notification handling is fully native).
+    private func openStream(from userInfo: [AnyHashable: Any], completion: @escaping () -> Void) {
+        guard
+            let login = userInfo["streamerLogin"] as? String,
+            !login.isEmpty,
+            let url = URL(string: "twitch://stream/\(login)")
+        else {
+            completion()
             return
         }
-        let streamerLogin = userInfo["streamerLogin"] as? String ?? ""
-        let streamerName = userInfo["streamerName"] as? String ?? ""
-
-        ignoreStreamer(
-            token: token,
-            streamerId: streamerId,
-            streamerLogin: streamerLogin,
-            streamerName: streamerName,
-            completion: completionHandler
-        )
+        DispatchQueue.main.async {
+            UIApplication.shared.open(url, options: [:]) { _ in completion() }
+        }
     }
 
     private func ignoreStreamer(token: String, streamerId: String, streamerLogin: String, streamerName: String, completion: @escaping () -> Void) {
