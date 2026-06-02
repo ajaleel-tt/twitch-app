@@ -1,5 +1,7 @@
 package com.twitch.frontend
 
+import scala.scalajs.js
+
 import calico.*
 import calico.html.io.{*, given}
 import cats.effect.*
@@ -50,17 +52,51 @@ object Main extends IOWebApp:
   private def fireBrowserNotification(n: StreamNotification): IO[Unit] =
     IO {
       if dom.Notification.permission == "granted" then
-        val notification = new dom.Notification(
-          s"${n.streamerName} is live playing ${n.categoryName}!",
-          new dom.NotificationOptions {
-            body = s"${n.categoryName}: ${n.streamTitle}"
-            icon = n.thumbnailUrl
-          },
-        )
-        notification.onclick = (_: dom.Event) => {
-          val _ = dom.window.open(s"https://twitch.tv/${n.streamerLogin}", "_blank")
-          notification.close()
-        }
+        val title = s"${n.streamerName} is live playing ${n.categoryName}!"
+        // Fire through the service worker's showNotification so the notification can carry
+        // an "Ignore streamer" action button — the plain Notification constructor ignores
+        // `actions`. The SW's notificationclick handler performs the ignore / open-stream.
+        // Buttons render where the platform supports them (e.g. Android Chrome); macOS
+        // Chrome shows the notification but not the buttons. Browsers without a service
+        // worker fall back to a basic (button-less) notification.
+        val sw = dom.window.navigator.asInstanceOf[js.Dynamic].serviceWorker
+        if js.isUndefined(sw) || sw == null then fallbackBrowserNotification(n, title)
+        else
+          val options = js.Dynamic.literal(
+            body = s"${n.categoryName}: ${n.streamTitle}",
+            icon = n.thumbnailUrl,
+            tag = n.streamerId,
+            data = js.Dynamic.literal(
+              streamerId = n.streamerId,
+              streamerLogin = n.streamerLogin,
+              streamerName = n.streamerName,
+            ),
+            actions = js.Array(js.Dynamic.literal(action = "ignore", title = "Ignore streamer")),
+          )
+          val _ = sw
+            .ready
+            .asInstanceOf[js.Promise[js.Dynamic]]
+            .`then`[js.Any](
+              ((reg: js.Dynamic) => reg.showNotification(title, options)): js.Function1[
+                js.Dynamic,
+                js.Any,
+              ],
+            )
+    }
+
+  // Fallback for browsers without a service worker: a basic notification. The Notification
+  // constructor doesn't support action buttons, so there's no "Ignore streamer" here.
+  private def fallbackBrowserNotification(n: StreamNotification, title: String): Unit =
+    val notification = new dom.Notification(
+      title,
+      new dom.NotificationOptions {
+        body = s"${n.categoryName}: ${n.streamTitle}"
+        icon = n.thumbnailUrl
+      },
+    )
+    notification.onclick = (_: dom.Event) => {
+      val _ = dom.window.open(s"https://twitch.tv/${n.streamerLogin}", "_blank")
+      notification.close()
     }
 
   private def startNotificationStream(state: SignallingRef[IO, Model]): IO[Unit] =
