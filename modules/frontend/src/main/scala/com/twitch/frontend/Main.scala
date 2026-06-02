@@ -5,6 +5,7 @@ import scala.scalajs.js
 import calico.*
 import calico.html.io.{*, given}
 import cats.effect.*
+import cats.effect.unsafe.implicits.global
 import cats.syntax.all.*
 import fs2.concurrent.*
 import fs2.dom.*
@@ -133,17 +134,35 @@ object Main extends IOWebApp:
             }
           }
 
-          // Set up handler for when user taps a notification
+          // Set up handler for when user taps a notification or its action button.
           val tapHandler = IO {
             CapacitorPush.onPushNotificationActionPerformed { action =>
               val data = action.notification.data
               if !js.isUndefined(data) then
                 val dynData = data.asInstanceOf[js.Dynamic]
-                val login = dynData.selectDynamic("streamerLogin")
-                if !js.isUndefined(login) then
-                  val streamer = login.asInstanceOf[String]
-                  val url = s"twitch://stream/$streamer"
-                  val _ = dom.window.location.assign(url)
+                if action.actionId == "IGNORE_STREAMER" then
+                  // Capacitor's notification router may deliver the "Ignore streamer"
+                  // action here instead of the native AppDelegate handler, so honor it
+                  // on the JS side too. Cookie auth works inside the WebView.
+                  val streamerIdRaw = dynData.selectDynamic("streamerId")
+                  if !js.isUndefined(streamerIdRaw) then
+                    val loginRaw = dynData.selectDynamic("streamerLogin")
+                    val nameRaw = dynData.selectDynamic("streamerName")
+                    ApiClient
+                      .addIgnoredStreamer(
+                        streamerId = streamerIdRaw.asInstanceOf[String],
+                        streamerLogin =
+                          if js.isUndefined(loginRaw) then "" else loginRaw.asInstanceOf[String],
+                        streamerName =
+                          if js.isUndefined(nameRaw) then "" else nameRaw.asInstanceOf[String],
+                      )
+                      .unsafeRunAndForget()
+                else
+                  val login = dynData.selectDynamic("streamerLogin")
+                  if !js.isUndefined(login) then
+                    val streamer = login.asInstanceOf[String]
+                    val url = s"twitch://stream/$streamer"
+                    val _ = dom.window.location.assign(url)
             }
           }
 

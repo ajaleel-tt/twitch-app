@@ -39,6 +39,7 @@ object CapacitorPush:
 
   @js.native
   trait ActionPerformed extends js.Object:
+    val actionId: String = js.native
     val notification: PushNotificationSchema = js.native
 
   // ── Public Scala API ──────────────────────────────────────────────
