@@ -38,6 +38,12 @@ class PushSubscriptionRepository(xa: Transactor[IO], dialect: SqlDialect) {
       .transact(xa)
       .void
 
+  def getUserIdByToken(deviceToken: String): IO[Option[String]] =
+    sql"SELECT user_id FROM push_subscriptions WHERE device_token = $deviceToken"
+      .query[String]
+      .option
+      .transact(xa)
+
   def getPushSubscriptionsForUsers(userIds: Set[String]): IO[List[PushSubscriptionRow]] =
     if userIds.isEmpty then IO.pure(Nil)
     else {

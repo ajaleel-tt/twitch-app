@@ -50,17 +50,38 @@ self.addEventListener('push', (event) => {
     badge: '/icons/icon.svg',
     data: data,
     tag: data.streamerId || 'twitch-notification',
-    renotify: true
+    renotify: true,
+    actions: [{ action: 'ignore', title: 'Ignore streamer' }]
   };
 
   event.waitUntil(self.registration.showNotification(title, options));
 });
 
-// Notification click: open the stream in the Twitch app via deep link
+// Notification click: handle the "Ignore streamer" action, or open the stream.
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
 
   const data = event.notification.data || {};
+
+  // "Ignore streamer" action: tell the backend to ignore this streamer, then
+  // dismiss. The service worker is same-origin with the backend, so the
+  // session cookie authenticates the request automatically.
+  if (event.action === 'ignore') {
+    event.waitUntil(
+      fetch('/api/ignored-streamers/add', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify({
+          streamerId: data.streamerId,
+          streamerLogin: data.streamerLogin,
+          streamerName: data.streamerName
+        })
+      })
+    );
+    return;
+  }
+
   const streamer = data.streamerLogin;
 
   if (!streamer) {
