@@ -236,4 +236,20 @@ class DatabaseSpec extends CatsEffectSuite {
     yield assertEquals(userId, None)
   }
 
+  test("savePushSubscription reassigns a device token to the latest user (no duplicates)") {
+    for {
+      _ <- repos.pushRepo.savePushSubscription(
+        userId = "owner-old",
+        deviceToken = "shared-token",
+        platform = "ios",
+      )
+      _ <- repos.pushRepo.savePushSubscription(
+        userId = "owner-new",
+        deviceToken = "shared-token",
+        platform = "ios",
+      )
+      userId <- repos.pushRepo.getUserIdByToken("shared-token")
+    } yield assertEquals(userId, Some("owner-new"))
+  }
+
 }
