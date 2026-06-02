@@ -185,6 +185,7 @@ object PushNotificationService {
       "body" -> body.asJson,
       "streamerId" -> notification.streamerId.asJson,
       "streamerLogin" -> notification.streamerLogin.asJson,
+      "streamerName" -> notification.streamerName.asJson,
       "categoryId" -> notification.categoryId.asJson,
     )
 
@@ -213,6 +214,7 @@ object PushNotificationService {
                     "body" -> body.asJson,
                   ),
                   "sound" -> "default".asJson,
+                  "category" -> "STREAM_LIVE".asJson,
                 ),
               ),
             ),

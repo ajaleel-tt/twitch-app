@@ -38,6 +38,10 @@ class PushNotificationServiceSpec extends FunSuite {
       message.downField("data").downField("streamerLogin").as[String],
       Right("streamer_login"),
     )
+    assertEquals(
+      message.downField("data").downField("streamerName").as[String],
+      Right("Streamer"),
+    )
     assert(message.downField("notification").focus.isEmpty)
     assert(message.downField("apns").focus.isEmpty)
   }
@@ -73,6 +77,15 @@ class PushNotificationServiceSpec extends FunSuite {
         .downField("body")
         .as[String],
       Right("Playing Just Chatting: Live now"),
+    )
+    assertEquals(
+      message
+        .downField("apns")
+        .downField("payload")
+        .downField("aps")
+        .downField("category")
+        .as[String],
+      Right("STREAM_LIVE"),
     )
     assertEquals(
       message.downField("data").downField("streamerLogin").as[String],

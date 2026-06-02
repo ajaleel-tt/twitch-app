@@ -6,6 +6,15 @@ import CapacitorFirebaseMessagingIos
 @UIApplicationMain
 class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterDelegate, MessagingDelegate {
 
+    // Notification action/category identifiers shared with the backend APNs payload.
+    private static let streamLiveCategory = "STREAM_LIVE"
+    private static let ignoreActionId = "IGNORE_STREAMER"
+    private static let fcmTokenKey = "fcm_token"
+    // Native action handlers run outside the WebView and can't read the session
+    // cookie, so they call the backend directly at its production origin (matching
+    // the server.url in capacitor.config.ts).
+    private static let backendBaseUrl = "https://twitch-app-grn6.onrender.com"
+
     var window: UIWindow?
     private var hasRegisteredForRemoteNotifications = false
     private var lastPostedFcmToken: String?
@@ -22,7 +31,25 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
             Messaging.messaging().delegate = self
         }
         UNUserNotificationCenter.current().delegate = self
+        registerNotificationCategories()
         return true
+    }
+
+    // Registers the "Ignore streamer" action shown on live notifications. The action
+    // runs in the background (no .foreground option) so tapping it never opens the app.
+    private func registerNotificationCategories() {
+        let ignoreAction = UNNotificationAction(
+            identifier: AppDelegate.ignoreActionId,
+            title: "Ignore streamer",
+            options: [.destructive]
+        )
+        let category = UNNotificationCategory(
+            identifier: AppDelegate.streamLiveCategory,
+            actions: [ignoreAction],
+            intentIdentifiers: [],
+            options: []
+        )
+        UNUserNotificationCenter.current().setNotificationCategories([category])
     }
 
     func application(_ application: UIApplication, didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {
@@ -69,6 +96,9 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
     private func postFcmTokenIfNeeded(_ fcmToken: String) {
         guard lastPostedFcmToken != fcmToken else { return }
         lastPostedFcmToken = fcmToken
+        // Persist so the background notification-action handler can authenticate
+        // its ignore-streamer request even when launched cold.
+        UserDefaults.standard.set(fcmToken, forKey: AppDelegate.fcmTokenKey)
         NotificationCenter.default.post(
             name: .capacitorDidRegisterForRemoteNotifications,
             object: fcmToken
@@ -91,6 +121,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
         content.body = body
         content.sound = .default
         content.userInfo = userInfo
+        content.categoryIdentifier = AppDelegate.streamLiveCategory
 
         let request = UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil)
         UNUserNotificationCenter.current().add(request) { _ in
@@ -101,6 +132,57 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
     // Show notifications even when app is in foreground
     func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification, withCompletionHandler completionHandler: @escaping @Sendable (UNNotificationPresentationOptions) -> Void) {
         completionHandler([.banner, .sound])
+    }
+
+    // Handle notification action button taps. The "Ignore streamer" action calls the
+    // backend (authenticated by the device's FCM token) and lets iOS dismiss the
+    // notification; the app is not brought to the foreground.
+    func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse, withCompletionHandler completionHandler: @escaping () -> Void) {
+        guard response.actionIdentifier == AppDelegate.ignoreActionId else {
+            completionHandler()
+            return
+        }
+
+        let userInfo = response.notification.request.content.userInfo
+        guard
+            let streamerId = userInfo["streamerId"] as? String,
+            !streamerId.isEmpty,
+            let token = UserDefaults.standard.string(forKey: AppDelegate.fcmTokenKey)
+        else {
+            completionHandler()
+            return
+        }
+        let streamerLogin = userInfo["streamerLogin"] as? String ?? ""
+        let streamerName = userInfo["streamerName"] as? String ?? ""
+
+        ignoreStreamer(
+            token: token,
+            streamerId: streamerId,
+            streamerLogin: streamerLogin,
+            streamerName: streamerName,
+            completion: completionHandler
+        )
+    }
+
+    private func ignoreStreamer(token: String, streamerId: String, streamerLogin: String, streamerName: String, completion: @escaping () -> Void) {
+        guard let url = URL(string: "\(AppDelegate.backendBaseUrl)/api/push/ignore-streamer") else {
+            completion()
+            return
+        }
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        let payload: [String: String] = [
+            "token": token,
+            "streamerId": streamerId,
+            "streamerLogin": streamerLogin,
+            "streamerName": streamerName
+        ]
+        request.httpBody = try? JSONSerialization.data(withJSONObject: payload)
+
+        URLSession.shared.dataTask(with: request) { _, _, _ in
+            completion()
+        }.resume()
     }
 
     func applicationWillResignActive(_ application: UIApplication) {
