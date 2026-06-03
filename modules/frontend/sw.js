@@ -77,12 +77,19 @@ self.addEventListener('notificationclick', (event) => {
           streamerLogin: data.streamerLogin,
           streamerName: data.streamerName
         })
-      }).then(() =>
+      }).then((response) => {
+        if (!response.ok) throw new Error('ignore failed: ' + response.status);
         // Tell any open page to refresh its ignore list so the UI stays in sync.
-        self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((windows) => {
+        return self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((windows) => {
           windows.forEach((w) =>
             w.postMessage({ type: 'streamer-ignored', streamerId: data.streamerId })
           );
+        });
+      }).catch(() =>
+        // Surface failures (e.g. an expired session) instead of dismissing silently.
+        self.registration.showNotification("Couldn't ignore streamer", {
+          body: 'Open the app and try again.',
+          icon: '/icons/icon.svg'
         })
       )
     );
