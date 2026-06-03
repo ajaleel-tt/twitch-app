@@ -41,7 +41,7 @@ object Main extends IOWebApp:
       ).parTupled.toResource
       _ <- startNotificationStream(state).background
       _ <- initPushNotifications(state).background
-      _ <- listenForServiceWorkerMessages(state).toResource
+      _ <- syncIgnoredFromBackground(state).toResource
       app <- appView(state)
     yield app
 
@@ -165,11 +165,33 @@ object Main extends IOWebApp:
         .compile
         .drain
 
-  /** Refresh the in-app ignore list when the service worker reports a streamer was ignored
-    * from a notification action, so an open page stays in sync without a manual reload.
+  /** Keep the in-app ignore list in sync when a streamer is ignored from a notification
+    * action — that runs in the service worker, outside the page. Refresh whenever the tab
+    * becomes visible again (the common case: the user returns to the tab after ignoring),
+    * and also on a direct service-worker message (page already open/visible).
     */
-  private def listenForServiceWorkerMessages(state: SignallingRef[IO, Model]): IO[Unit] =
+  private def syncIgnoredFromBackground(state: SignallingRef[IO, Model]): IO[Unit] =
     IO {
+      val refresh: () => Unit = () =>
+        ApiClient
+          .fetchIgnoredStreamers
+          .flatMap(streamers =>
+            state.update(m =>
+              m.copy(ignoredStreamers = m.ignoredStreamers.copy(streamers = streamers)),
+            ),
+          )
+          .unsafeRunAndForget()
+
+      // Tab became visible again (e.g. switching back after tapping "Ignore streamer").
+      val _ = dom.document.addEventListener(
+        "visibilitychange",
+        { (_: dom.Event) =>
+          if dom.document.asInstanceOf[js.Dynamic].visibilityState.asInstanceOf[String] == "visible"
+          then refresh()
+        }: js.Function1[dom.Event, Unit],
+      )
+
+      // Service worker reported an ignore while a page is open/visible.
       val sw = dom.window.navigator.asInstanceOf[js.Dynamic].serviceWorker
       if !js.isUndefined(sw) && sw != null then
         val _ = sw.addEventListener(
@@ -179,15 +201,7 @@ object Main extends IOWebApp:
             val isIgnored =
               !js.isUndefined(data) && data != null &&
                 data.selectDynamic("type").asInstanceOf[String] == "streamer-ignored"
-            if isIgnored then
-              ApiClient
-                .fetchIgnoredStreamers
-                .flatMap(streamers =>
-                  state.update(m =>
-                    m.copy(ignoredStreamers = m.ignoredStreamers.copy(streamers = streamers)),
-                  ),
-                )
-                .unsafeRunAndForget()
+            if isIgnored then refresh()
           }: js.Function1[js.Dynamic, Unit],
         )
     }
