@@ -5,6 +5,7 @@ import scala.scalajs.js
 import calico.*
 import calico.html.io.{*, given}
 import cats.effect.*
+import cats.effect.unsafe.implicits.global
 import cats.syntax.all.*
 import fs2.concurrent.*
 import fs2.dom.*
@@ -40,6 +41,7 @@ object Main extends IOWebApp:
       ).parTupled.toResource
       _ <- startNotificationStream(state).background
       _ <- initPushNotifications(state).background
+      _ <- listenForServiceWorkerMessages(state).toResource
       app <- appView(state)
     yield app
 
@@ -162,6 +164,33 @@ object Main extends IOWebApp:
         }
         .compile
         .drain
+
+  /** Refresh the in-app ignore list when the service worker reports a streamer was ignored
+    * from a notification action, so an open page stays in sync without a manual reload.
+    */
+  private def listenForServiceWorkerMessages(state: SignallingRef[IO, Model]): IO[Unit] =
+    IO {
+      val sw = dom.window.navigator.asInstanceOf[js.Dynamic].serviceWorker
+      if !js.isUndefined(sw) && sw != null then
+        val _ = sw.addEventListener(
+          "message",
+          { (event: js.Dynamic) =>
+            val data = event.data
+            val isIgnored =
+              !js.isUndefined(data) && data != null &&
+                data.selectDynamic("type").asInstanceOf[String] == "streamer-ignored"
+            if isIgnored then
+              ApiClient
+                .fetchIgnoredStreamers
+                .flatMap(streamers =>
+                  state.update(m =>
+                    m.copy(ignoredStreamers = m.ignoredStreamers.copy(streamers = streamers)),
+                  ),
+                )
+                .unsafeRunAndForget()
+          }: js.Function1[js.Dynamic, Unit],
+        )
+    }
 
   private def appView(state: SignallingRef[IO, Model]): Resource[IO, HtmlDivElement[IO]] =
     div(

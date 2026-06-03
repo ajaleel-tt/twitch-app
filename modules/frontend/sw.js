@@ -77,7 +77,14 @@ self.addEventListener('notificationclick', (event) => {
           streamerLogin: data.streamerLogin,
           streamerName: data.streamerName
         })
-      })
+      }).then(() =>
+        // Tell any open page to refresh its ignore list so the UI stays in sync.
+        self.clients.matchAll({ type: 'window' }).then((windows) => {
+          windows.forEach((w) =>
+            w.postMessage({ type: 'streamer-ignored', streamerId: data.streamerId })
+          );
+        })
+      )
     );
     return;
   }
