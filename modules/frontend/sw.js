@@ -96,13 +96,11 @@ self.addEventListener('notificationclick', (event) => {
     return;
   }
 
-  // Use Twitch deep link to open the native app directly
-  const deepLink = `twitch://stream/${streamer}`;
-  const fallbackUrl = `https://twitch.tv/${streamer}`;
-
-  event.waitUntil(
-    clients.openWindow(deepLink).catch(() => clients.openWindow(fallbackUrl))
-  );
+  // Open the stream on twitch.tv. In the browser the https URL works on desktop and
+  // mobile; twitch:// would open a blank page when no Twitch protocol handler is
+  // registered (e.g. desktop without the Twitch app). Native iOS/Android handle their
+  // own notification taps and deep-link to the Twitch app separately.
+  event.waitUntil(clients.openWindow(`https://twitch.tv/${streamer}`));
 });
 
 // Fetch: route requests to cache or network
