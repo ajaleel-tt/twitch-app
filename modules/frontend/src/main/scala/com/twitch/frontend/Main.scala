@@ -64,6 +64,12 @@ object Main extends IOWebApp:
         val sw = dom.window.navigator.asInstanceOf[js.Dynamic].serviceWorker
         if js.isUndefined(sw) || sw == null then fallbackBrowserNotification(n, title)
         else
+          var shown = false
+          val showFallback: () => Unit = () =>
+            if !shown then
+              shown = true
+              fallbackBrowserNotification(n, title)
+
           val options = js.Dynamic.literal(
             body = s"${n.categoryName}: ${n.streamTitle}",
             icon = n.thumbnailUrl,
@@ -75,14 +81,19 @@ object Main extends IOWebApp:
             ),
             actions = js.Array(js.Dynamic.literal(action = "ignore", title = "Ignore streamer")),
           )
+          val fallbackTimeout =
+            dom.window.setTimeout(() => showFallback(), 2_000)
           val _ = sw
             .ready
             .asInstanceOf[js.Promise[js.Dynamic]]
             .`then`[js.Any](
-              ((reg: js.Dynamic) => reg.showNotification(title, options)): js.Function1[
-                js.Dynamic,
-                js.Any,
-              ],
+              ((reg: js.Dynamic) =>
+                if !shown then
+                  shown = true
+                  dom.window.clearTimeout(fallbackTimeout)
+                  reg.showNotification(title, options)
+                else ()
+              ): js.Function1[js.Dynamic, js.Any],
             )
     }
 
