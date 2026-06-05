@@ -25,6 +25,10 @@
 #
 # Build numbers: ios/build-number.txt records the last uploaded build. By default
 # this script uses (last + 1). On a successful --upload it writes the new number back.
+#
+# Worktrees: when run from a git worktree, the gitignored build inputs (the two
+# secrets, node_modules, and the cap-synced files) are auto-copied from the main
+# checkout, so a fresh worktree builds without manual setup.
 
 set -euo pipefail
 
@@ -66,7 +70,43 @@ done
 
 fail() { echo "error: $*" >&2; exit 1; }
 
+# A freshly-created git worktree has none of the gitignored build inputs (the two
+# secrets + everything npm/`cap sync` generate), so the archive fails before it
+# even compiles. Rather than require a manual copy or a full frontend rebuild,
+# copy whatever's missing from the main worktree — always a complete, known-good
+# checkout. No-op when run from the main checkout itself.
+hydrate_from_main_worktree() {
+  local common_dir main rel copied=()
+  common_dir="$(git rev-parse --git-common-dir 2>/dev/null)" || return 0
+  main="$(cd "$(dirname "$common_dir")" 2>/dev/null && pwd)" || return 0
+  [[ "$main" == "$REPO_ROOT" ]] && return 0   # we are the main checkout
+
+  # Gitignored inputs the build needs that no tracked file provides.
+  for rel in scripts/.asc-api-key.env \
+             ios/App/App/GoogleService-Info.plist \
+             ios/App/App/capacitor.config.json \
+             ios/App/App/config.xml \
+             ios/App/App/public \
+             node_modules; do
+    if [[ ! -e "$rel" && -e "$main/$rel" ]]; then
+      mkdir -p "$(dirname "$rel")"
+      cp -Rc "$main/$rel" "$rel" 2>/dev/null || cp -R "$main/$rel" "$rel"
+      copied+=("$rel")
+    fi
+  done
+  # Last resort if the main checkout itself has no node_modules.
+  if [[ ! -d node_modules ]] && command -v npm >/dev/null; then
+    echo "==> node_modules missing (and absent from main checkout); running npm ci"
+    npm ci
+  fi
+  if (( ${#copied[@]} )); then
+    echo "==> Hydrated worktree from main checkout: ${copied[*]}"
+  fi
+  return 0
+}
+
 # --- preflight --------------------------------------------------------------
+hydrate_from_main_worktree
 command -v xcodebuild >/dev/null || fail "xcodebuild not found (install Xcode + xcode-select)"
 [[ -f "$GOOGLE_PLIST" ]] || fail "missing $GOOGLE_PLIST (required for push; see README)"
 [[ -f "$ENTITLEMENTS" ]] || fail "missing $ENTITLEMENTS"
