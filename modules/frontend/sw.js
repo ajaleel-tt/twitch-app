@@ -1,9 +1,8 @@
-const CACHE_VERSION = 'v1';
+const CACHE_VERSION = 'v2';
 const CACHE_NAME = `twitch-tracker-${CACHE_VERSION}`;
 
 const PRECACHE_URLS = [
   '/',
-  '/dist/output.css',
   '/manifest.json',
   '/icons/icon.svg'
 ];
