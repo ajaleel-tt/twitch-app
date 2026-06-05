@@ -11,8 +11,17 @@ const PRECACHE_URLS = [
 self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME)
-      .then((cache) => cache.addAll(PRECACHE_URLS))
-      .then(() => self.skipWaiting())
+      .then((cache) =>
+        Promise.allSettled(PRECACHE_URLS.map((url) => cache.add(url)))
+      )
+      .then((results) => {
+        results.forEach((result, i) => {
+          if (result.status === 'rejected') {
+            console.warn('SW precache skipped:', PRECACHE_URLS[i], result.reason);
+          }
+        });
+        return self.skipWaiting();
+      })
   );
 });
 
