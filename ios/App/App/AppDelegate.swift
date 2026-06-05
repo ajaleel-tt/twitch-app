@@ -149,7 +149,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
                 !streamerId.isEmpty,
                 let token = UserDefaults.standard.string(forKey: AppDelegate.fcmTokenKey)
             else {
-                completionHandler()
+                completeNotificationAction(completionHandler)
                 return
             }
             ignoreStreamer(
@@ -162,7 +162,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
         case UNNotificationDefaultActionIdentifier:
             openStream(from: userInfo, completion: completionHandler)
         default:
-            completionHandler()
+            completeNotificationAction(completionHandler)
         }
     }
 
@@ -174,7 +174,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
             !login.isEmpty,
             let url = URL(string: "twitch://stream/\(login)")
         else {
-            completion()
+            completeNotificationAction(completion)
             return
         }
         DispatchQueue.main.async {
@@ -184,23 +184,67 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
 
     private func ignoreStreamer(token: String, streamerId: String, streamerLogin: String, streamerName: String, completion: @escaping () -> Void) {
         guard let url = URL(string: "\(AppDelegate.backendBaseUrl)/api/push/ignore-streamer") else {
-            completion()
+            completeNotificationAction(completion)
             return
         }
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         let payload: [String: String] = [
             "token": token,
             "streamerId": streamerId,
             "streamerLogin": streamerLogin,
             "streamerName": streamerName
         ]
-        request.httpBody = try? JSONSerialization.data(withJSONObject: payload)
 
-        URLSession.shared.dataTask(with: request) { _, _, _ in
+        DispatchQueue.main.async {
+            var didFinish = false
+            var backgroundTask: UIBackgroundTaskIdentifier = .invalid
+            var dataTask: URLSessionDataTask?
+
+            let finishNow: () -> Void = {
+                guard !didFinish else { return }
+                didFinish = true
+                dataTask?.cancel()
+                if backgroundTask != .invalid {
+                    UIApplication.shared.endBackgroundTask(backgroundTask)
+                    backgroundTask = .invalid
+                }
+                completion()
+            }
+            let finish: () -> Void = {
+                if Thread.isMainThread {
+                    finishNow()
+                } else {
+                    DispatchQueue.main.async {
+                        finishNow()
+                    }
+                }
+            }
+
+            backgroundTask = UIApplication.shared.beginBackgroundTask(
+                withName: "IgnoreStreamerNotificationAction",
+                expirationHandler: finish
+            )
+
+            var request = URLRequest(url: url)
+            request.httpMethod = "POST"
+            request.timeoutInterval = 10
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            request.httpBody = try? JSONSerialization.data(withJSONObject: payload)
+
+            dataTask = URLSession.shared.dataTask(with: request) { _, _, _ in
+                finish()
+            }
+            dataTask?.resume()
+        }
+    }
+
+    private func completeNotificationAction(_ completion: @escaping () -> Void) {
+        if Thread.isMainThread {
             completion()
-        }.resume()
+        } else {
+            DispatchQueue.main.async {
+                completion()
+            }
+        }
     }
 
     func applicationWillResignActive(_ application: UIApplication) {
