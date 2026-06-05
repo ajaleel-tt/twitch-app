@@ -91,6 +91,7 @@ ios/App/App/*
 !ios/App/App/Base.lproj/
 !ios/App/App/Assets.xcassets/
 ios/App/App/Assets.xcassets/*
+!ios/App/App/Assets.xcassets/Contents.json
 !ios/App/App/Assets.xcassets/AppIcon.appiconset/
 !ios/App/App/Assets.xcassets/Splash.imageset/
 !ios/App/App/Assets.xcassets/Splash.imageset/**
