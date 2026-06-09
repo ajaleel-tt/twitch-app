@@ -9,7 +9,9 @@ case class ServerConfig(
   dbUser: Option[String],
   dialect: SqlDialect,
   port: Int,
+  pushActionTokenSecret: String,
   redirectUri: String,
+  sessionTokenEncryptionSecret: String,
   staticDir: String,
 )
 
@@ -47,6 +49,10 @@ object ServerConfig {
       dbUser <- IO.delay(user.orElse(sys.env.get("DATABASE_USER")))
       dbPassword <- IO.delay(password.orElse(sys.env.get("DATABASE_PASS")))
       port <- IO.delay(sys.env.getOrElse("PORT", "8080").toInt)
+      pushActionTokenSecret <- IO.delay(sys.env.getOrElse("PUSH_ACTION_TOKEN_SECRET", clientSecret))
+      sessionTokenEncryptionSecret <- IO.delay(
+        sys.env.getOrElse("SESSION_TOKEN_ENCRYPTION_KEY", clientSecret),
+      )
       staticDir <- IO.delay(sys.env.getOrElse("STATIC_DIR", "./modules/frontend"))
     } yield ServerConfig(
       baseUrl = baseUrl,
@@ -57,7 +63,9 @@ object ServerConfig {
       dbUser = dbUser,
       dialect = dialect,
       port = port,
+      pushActionTokenSecret = pushActionTokenSecret,
       redirectUri = s"$baseUrl/auth/callback",
+      sessionTokenEncryptionSecret = sessionTokenEncryptionSecret,
       staticDir = staticDir,
     )
 

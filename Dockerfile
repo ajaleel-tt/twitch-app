@@ -1,13 +1,16 @@
+# ── Node toolchain stage ─────────────────────────────────────────────
+FROM node:22-bookworm-slim AS node
+
 # ── Build stage ─────────────────────────────────────────────────────
 FROM eclipse-temurin:21-jdk AS build
 
-# Install Node.js and sbt
-RUN apt-get update && apt-get install -y curl gnupg && \
-    curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && \
-    apt-get install -y nodejs && \
-    echo "deb https://repo.scala-sbt.org/scalasbt/debian all main" | tee /etc/apt/sources.list.d/sbt.list && \
-    curl -sL "https://keyserver.ubuntu.com/pks/lookup?op=get&search=0x2EE0EA64E40A89B84B2DF73499E82A75642AC823" | gpg --dearmor -o /etc/apt/trusted.gpg.d/sbt.gpg && \
-    apt-get update && apt-get install -y sbt && \
+# Install Node.js from the official Node image and sbt from a signed apt source.
+COPY --from=node /usr/local /usr/local
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl gnupg && \
+    install -d -m 0755 /etc/apt/keyrings && \
+    curl -fsSL "https://keyserver.ubuntu.com/pks/lookup?op=get&search=0x2EE0EA64E40A89B84B2DF73499E82A75642AC823" | gpg --dearmor -o /etc/apt/keyrings/sbt.gpg && \
+    echo "deb [signed-by=/etc/apt/keyrings/sbt.gpg] https://repo.scala-sbt.org/scalasbt/debian all main" > /etc/apt/sources.list.d/sbt.list && \
+    apt-get update && apt-get install -y --no-install-recommends sbt && \
     rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
@@ -16,7 +19,8 @@ WORKDIR /app
 COPY project/build.properties project/plugins.sbt project/
 COPY build.sbt .
 COPY package.json package-lock.json ./
-RUN sbt update && npm install
+COPY plugins/capacitor-firebase-messaging-ios/package.json plugins/capacitor-firebase-messaging-ios/package.json
+RUN sbt update && npm ci
 
 # Copy source and build everything
 COPY . .

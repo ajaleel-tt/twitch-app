@@ -220,36 +220,66 @@ class DatabaseSpec extends CatsEffectSuite {
 
   // ── Push subscription tests ────────────────────────────────────────
 
-  test("getUserIdByToken returns the user for a registered device token") {
+  test("savePushSubscription stores a token for its owner") {
     for {
-      _ <- repos.pushRepo.savePushSubscription(
-        userId = "pushuser1",
-        deviceToken = "token-abc",
-        platform = "ios",
-      )
-      userId <- repos.pushRepo.getUserIdByToken("token-abc")
-    } yield assertEquals(userId, Some("pushuser1"))
+      _ <- repos
+        .pushRepo
+        .savePushSubscription(
+          userId = "pushuser1",
+          deviceToken = "token-abc",
+          platform = "ios",
+        )
+      rows <- repos.pushRepo.getPushSubscriptionsForUsers(Set("pushuser1"))
+    } yield {
+      assertEquals(rows.map(_.deviceToken), List("token-abc"))
+      assertEquals(rows.map(_.userId), List("pushuser1"))
+    }
   }
 
-  test("getUserIdByToken returns None for an unknown device token") {
-    for userId <- repos.pushRepo.getUserIdByToken("no-such-token")
-    yield assertEquals(userId, None)
+  test("getPushSubscriptionsForUsers returns no rows for an unknown user") {
+    for rows <- repos.pushRepo.getPushSubscriptionsForUsers(Set("unknown-user"))
+    yield assertEquals(rows, Nil)
   }
 
-  test("savePushSubscription reassigns a device token to the latest user (no duplicates)") {
+  test("savePushSubscriptionIfUnderLimit rejects a token owned by another user") {
     for {
-      _ <- repos.pushRepo.savePushSubscription(
-        userId = "owner-old",
-        deviceToken = "shared-token",
-        platform = "ios",
-      )
-      _ <- repos.pushRepo.savePushSubscription(
-        userId = "owner-new",
-        deviceToken = "shared-token",
-        platform = "ios",
-      )
-      userId <- repos.pushRepo.getUserIdByToken("shared-token")
-    } yield assertEquals(userId, Some("owner-new"))
+      first <- repos
+        .pushRepo
+        .savePushSubscriptionIfUnderLimit(
+          userId = "owner-old",
+          deviceToken = "shared-token",
+          platform = "ios",
+          maxPushSubscriptions = 10,
+        )
+      second <- repos
+        .pushRepo
+        .savePushSubscriptionIfUnderLimit(
+          userId = "owner-new",
+          deviceToken = "shared-token",
+          platform = "ios",
+          maxPushSubscriptions = 10,
+        )
+      oldRows <- repos.pushRepo.getPushSubscriptionsForUsers(Set("owner-old"))
+      newRows <- repos.pushRepo.getPushSubscriptionsForUsers(Set("owner-new"))
+    } yield {
+      assertEquals(first, db.PushSubscriptionSaveResult.Saved)
+      assertEquals(second, db.PushSubscriptionSaveResult.TokenOwnedByAnotherUser)
+      assertEquals(oldRows.map(_.deviceToken), List("shared-token"))
+      assertEquals(newRows, Nil)
+    }
+  }
+
+  test("deletePushSubscription only deletes the current user's token") {
+    for {
+      _ <- repos.pushRepo.savePushSubscription("delete-owner", "delete-token", "ios")
+      _ <- repos.pushRepo.deletePushSubscription("other-user", "delete-token")
+      stillThere <- repos.pushRepo.getPushSubscriptionsForUsers(Set("delete-owner"))
+      _ <- repos.pushRepo.deletePushSubscription("delete-owner", "delete-token")
+      deleted <- repos.pushRepo.getPushSubscriptionsForUsers(Set("delete-owner"))
+    } yield {
+      assertEquals(stillThere.map(_.deviceToken), List("delete-token"))
+      assertEquals(deleted, Nil)
+    }
   }
 
 }

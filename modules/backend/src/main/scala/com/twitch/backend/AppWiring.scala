@@ -10,6 +10,7 @@ import org.http4s.server.Router
 import org.http4s.server.middleware.CORS
 import org.http4s.server.staticcontent.*
 
+import com.twitch.backend.auth.SessionTokenCipher
 import com.twitch.core.StreamNotification
 
 case class App(
@@ -30,7 +31,8 @@ object AppWiring {
     val tagFilterRepo = new db.TagFilterRepository(xa, config.dialect)
     val ignoredStreamerRepo = new db.IgnoredStreamerRepository(xa, config.dialect)
     val userRepo = new db.UserRepository(xa)
-    val sessionRepo = new db.SessionRepository(xa)
+    val sessionTokenCipher = SessionTokenCipher.fromSecret(config.sessionTokenEncryptionSecret)
+    val sessionRepo = new db.SessionRepository(xa, sessionTokenCipher)
     val pushRepo = new db.PushSubscriptionRepository(xa, config.dialect)
     val topGamesRepo = new db.TopGamesRepository(xa)
 
@@ -45,6 +47,9 @@ object AppWiring {
           fromName = settings.emailFromName,
         ),
       )
+
+    val pushActionTokens =
+      new PushActionTokenService(config.pushActionTokenSecret, settings.pushActionTokenTtl)
 
     val pushServiceIO: IO[Option[PushNotificationService]] = {
       val keyIO = sys.env.get("FCM_SERVICE_ACCOUNT_JSON") match {
@@ -67,6 +72,7 @@ object AppWiring {
                 client = client,
                 parallelSends = settings.pushParallelSends,
                 projectId = key.projectId,
+                pushActionTokens = pushActionTokens,
                 pushRepo = pushRepo,
                 serviceAccountKey = key,
                 tokenCache = tokenCache,
@@ -85,7 +91,8 @@ object AppWiring {
 
     for {
       _ <- db.Schema.initDb(xa, config.dialect)
-      pendingOAuthStates <- IO.ref(Set.empty[String])
+      _ <- sessionRepo.encryptPlaintextTokens
+      pendingOAuthStates <- IO.ref(Map.empty[String, java.time.Instant])
       notificationQueues <- IO.ref(Map.empty[String, (String, Queue[IO, StreamNotification])])
       pushService <- pushServiceIO
       twitchApi = new TwitchApiClient(
@@ -93,13 +100,21 @@ object AppWiring {
         clientId = config.clientId,
         clientSecret = config.clientSecret,
       )
-      sessionManager = new auth.SessionManager(sessionRepo, twitchApi, settings.tokenRefreshSkew)
+      sessionManager = new auth.SessionManager(
+        sessionRepo,
+        twitchApi,
+        settings.tokenRefreshSkew,
+        settings.sessionTtl,
+      )
       authRoutes = new routes.AuthRoutes(
         clientId = config.clientId,
         emailService = emailService,
+        maxPendingOAuthStates = settings.maxPendingOAuthStates,
+        oauthStateTtl = settings.oauthStateTtl,
         pendingOAuthStates = pendingOAuthStates,
         redirectUri = config.redirectUri,
         sessionRepo = sessionRepo,
+        sessionTtl = settings.sessionTtl,
         twitchApi = twitchApi,
         userRepo = userRepo,
       )
@@ -108,6 +123,7 @@ object AppWiring {
         followRepo = followRepo,
         ignoredStreamerRepo = ignoredStreamerRepo,
         notificationQueues = notificationQueues,
+        pushActionTokens = pushActionTokens,
         pushRepo = pushRepo,
         sessionManager = sessionManager,
         sessionRepo = sessionRepo,
