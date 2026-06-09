@@ -36,6 +36,8 @@ class PushActionTokenService(secret: String, ttl: FiniteDuration) {
       val claims = PushActionClaims(
         action = PushActionTokenService.IgnoreStreamerAction,
         expiresAt = now.plusMillis(ttl.toMillis).getEpochSecond,
+        // Entropy only: action tokens are intentionally replayable until expiry because the
+        // ignore-streamer action is idempotent.
         nonce = java.util.UUID.randomUUID().toString,
         streamerId = notification.streamerId,
         streamerLogin = notification.streamerLogin,

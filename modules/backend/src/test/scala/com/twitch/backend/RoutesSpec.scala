@@ -26,7 +26,6 @@ class RoutesSpec extends CatsEffectSuite {
     emailFromName = "Test App",
     maxFollowedCategories = 5,
     maxIgnoredStreamers = 5,
-    maxPendingOAuthStates = 10,
     maxPushSubscriptions = 2,
     maxTagFilters = 5,
     oauthStateTtl = 10.minutes,
@@ -82,7 +81,6 @@ class RoutesSpec extends CatsEffectSuite {
     apiRoutes: routes.ApiRoutes,
     sessionRepo: db.SessionRepository,
     topGamesRepo: db.TopGamesRepository,
-    pendingOAuthStates: Ref[IO, Map[String, java.time.Instant]],
     notificationQueues: Ref[IO, Map[String, (String, Queue[IO, StreamNotification])]],
     pushActionTokens: PushActionTokenService,
   )
@@ -105,19 +103,17 @@ class RoutesSpec extends CatsEffectSuite {
       sessionRepo = new db.SessionRepository(xa)
       pushRepo = new db.PushSubscriptionRepository(xa, SqlDialect.H2)
       topGamesRepo = new db.TopGamesRepository(xa)
-      pendingStates <- Resource.eval(IO.ref(Map.empty[String, java.time.Instant]))
       notifQueues <- Resource.eval(
         IO.ref(Map.empty[String, (String, Queue[IO, StreamNotification])]),
       )
+      oauthStateTokens = new OAuthStateTokenService("test-oauth-state-secret", 10.minutes)
       pushActionTokens = new PushActionTokenService("test-push-action-secret", 30.minutes)
       sessionManager = new auth.SessionManager(sessionRepo, stubTwitchApi, 5.minutes, 30.days)
       authRoutes = new routes.AuthRoutes(
         clientId = "test-client-id",
         redirectUri = "http://localhost:8080/auth/callback",
         twitchApi = stubTwitchApi,
-        maxPendingOAuthStates = testSettings.maxPendingOAuthStates,
-        oauthStateTtl = testSettings.oauthStateTtl,
-        pendingOAuthStates = pendingStates,
+        oauthStateTokens = oauthStateTokens,
         userRepo = userRepo,
         sessionRepo = sessionRepo,
         sessionTtl = testSettings.sessionTtl,
@@ -142,7 +138,6 @@ class RoutesSpec extends CatsEffectSuite {
       apiRoutes,
       sessionRepo,
       topGamesRepo,
-      pendingStates,
       notifQueues,
       pushActionTokens,
     ),
@@ -256,16 +251,17 @@ class RoutesSpec extends CatsEffectSuite {
   test("GET /auth/login redirects with state parameter") {
     for {
       resp <- authApp.run(Request[IO](Method.GET, uri"/auth/login"))
-      pendingStates <- env.pendingOAuthStates.get
     } yield {
       assertEquals(resp.status, Status.Found)
       val location = resp.headers.get[Location].get.uri.renderString
+      val locationState = Uri.unsafeFromString(location).query.params.get("state")
+      val cookieState = resp.cookies.find(_.name == "oauth_state").map(_.content)
       assert(
         location.contains("id.twitch.tv/oauth2/authorize"),
         s"Expected Twitch authorize URL, got: $location",
       )
       assert(location.contains("client_id=test-client-id"))
-      assert(pendingStates.size == 1, "Expected one pending OAuth state")
+      assertEquals(locationState, cookieState, "Expected browser cookie to match OAuth state param")
       assert(
         resp
           .cookies
@@ -287,11 +283,10 @@ class RoutesSpec extends CatsEffectSuite {
     yield assertEquals(resp.status, Status.BadRequest)
   }
 
-  test("GET /auth/callback rejects valid global state without matching browser cookie") {
+  test("GET /auth/callback rejects signed state without matching browser cookie") {
     for {
-      _ <- authApp.run(Request[IO](Method.GET, uri"/auth/login"))
-      pendingStates <- env.pendingOAuthStates.get
-      state = pendingStates.keys.head
+      loginResp <- authApp.run(Request[IO](Method.GET, uri"/auth/login"))
+      state = loginResp.cookies.find(_.name == "oauth_state").get.content
       resp <- authApp.run(
         Request[IO](Method.GET, Uri.unsafeFromString(s"/auth/callback?code=test-code&state=$state")),
       )

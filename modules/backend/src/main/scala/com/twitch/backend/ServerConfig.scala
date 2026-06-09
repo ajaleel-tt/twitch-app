@@ -8,6 +8,7 @@ case class ServerConfig(
   dbUrl: String,
   dbUser: Option[String],
   dialect: SqlDialect,
+  oauthStateSecret: String,
   port: Int,
   pushActionTokenSecret: String,
   redirectUri: String,
@@ -49,6 +50,7 @@ object ServerConfig {
       dbUser <- IO.delay(user.orElse(sys.env.get("DATABASE_USER")))
       dbPassword <- IO.delay(password.orElse(sys.env.get("DATABASE_PASS")))
       port <- IO.delay(sys.env.getOrElse("PORT", "8080").toInt)
+      oauthStateSecret <- IO.delay(sys.env.getOrElse("OAUTH_STATE_SECRET", clientSecret))
       pushActionTokenSecret <- IO.delay(sys.env.getOrElse("PUSH_ACTION_TOKEN_SECRET", clientSecret))
       sessionTokenEncryptionSecret <- IO.delay(
         sys.env.getOrElse("SESSION_TOKEN_ENCRYPTION_KEY", clientSecret),
@@ -62,6 +64,7 @@ object ServerConfig {
       dbUrl = jdbcUrl,
       dbUser = dbUser,
       dialect = dialect,
+      oauthStateSecret = oauthStateSecret,
       port = port,
       pushActionTokenSecret = pushActionTokenSecret,
       redirectUri = s"$baseUrl/auth/callback",

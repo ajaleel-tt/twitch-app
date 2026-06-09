@@ -2,7 +2,6 @@ package com.twitch.backend.routes
 
 import java.net.URLEncoder
 import java.nio.charset.StandardCharsets
-import java.time.Instant
 import java.util.UUID
 import scala.concurrent.duration.FiniteDuration
 
@@ -13,16 +12,14 @@ import org.http4s.dsl.io.*
 import org.http4s.headers.Location
 import org.http4s.implicits.*
 
-import com.twitch.backend.{EmailNotifier, TwitchApi}
+import com.twitch.backend.{EmailNotifier, OAuthStateTokenService, TwitchApi}
 import com.twitch.backend.db.{SessionRepository, UserRepository}
 import com.twitch.core.TwitchUser
 
 class AuthRoutes(
   clientId: String,
   emailService: Option[EmailNotifier],
-  maxPendingOAuthStates: Int,
-  oauthStateTtl: FiniteDuration,
-  pendingOAuthStates: Ref[IO, Map[String, Instant]],
+  oauthStateTokens: OAuthStateTokenService,
   redirectUri: String,
   sessionRepo: SessionRepository,
   sessionTtl: FiniteDuration,
@@ -32,7 +29,6 @@ class AuthRoutes(
 
   private val secureCookies = redirectUri.startsWith("https")
   private val oauthStateCookie = "oauth_state"
-  private val oauthStateTtlMillis = oauthStateTtl.toMillis
 
   private val expiredOAuthStateCookie = ResponseCookie(
     oauthStateCookie,
@@ -49,32 +45,9 @@ class AuthRoutes(
   private def urlEncode(value: String): String =
     URLEncoder.encode(value, StandardCharsets.UTF_8)
 
-  private def activeOAuthStates(now: Instant, states: Map[String, Instant]): Map[String, Instant] =
-    states.filter {
-      case (_, createdAt) =>
-        createdAt.plusMillis(oauthStateTtlMillis).isAfter(now)
-    }
-
-  private def rememberOAuthState(state: String): IO[Boolean] =
-    IO.realTimeInstant.flatMap { now =>
-      pendingOAuthStates.modify { states =>
-        val activeStates = activeOAuthStates(now, states)
-        if activeStates.size >= maxPendingOAuthStates then (activeStates, false)
-        else (activeStates.updated(state, now), true)
-      }
-    }
-
-  private def consumeOAuthState(req: Request[IO], state: String): IO[Boolean] = {
+  private def validateOAuthState(req: Request[IO], state: String): Boolean = {
     val cookieState = req.cookies.find(_.name == oauthStateCookie).map(_.content)
-    if !cookieState.contains(state) then IO.pure(false)
-    else
-      IO.realTimeInstant.flatMap { now =>
-        pendingOAuthStates.modify { states =>
-          val activeStates = activeOAuthStates(now, states)
-          if activeStates.contains(state) then (activeStates - state, true)
-          else (activeStates, false)
-        }
-      }
+    cookieState.contains(state) && oauthStateTokens.verifyState(state).isRight
   }
 
   private def sendWelcomeEmailIfNeeded(user: TwitchUser): IO[Unit] =
@@ -98,25 +71,21 @@ class AuthRoutes(
 
   def routes: HttpRoutes[IO] = HttpRoutes.of[IO] {
     case GET -> Root / "auth" / "login" =>
-      val state = UUID.randomUUID().toString
-      val authorizeUri =
-        s"https://id.twitch.tv/oauth2/authorize?client_id=${urlEncode(clientId)}&redirect_uri=${urlEncode(redirectUri)}&response_type=code&scope=${urlEncode("user:read:email")}&state=${urlEncode(state)}"
-      rememberOAuthState(state).flatMap {
-        case true =>
-          Found(Location(Uri.unsafeFromString(authorizeUri))).map(
-            _.addCookie(
-              ResponseCookie(
-                oauthStateCookie,
-                state,
-                path = Some("/auth"),
-                httpOnly = true,
-                secure = secureCookies,
-                sameSite = Some(SameSite.Lax),
-              ),
+      oauthStateTokens.createState.flatMap { state =>
+        val authorizeUri =
+          s"https://id.twitch.tv/oauth2/authorize?client_id=${urlEncode(clientId)}&redirect_uri=${urlEncode(redirectUri)}&response_type=code&scope=${urlEncode("user:read:email")}&state=${urlEncode(state)}"
+        Found(Location(Uri.unsafeFromString(authorizeUri))).map(
+          _.addCookie(
+            ResponseCookie(
+              oauthStateCookie,
+              state,
+              path = Some("/auth"),
+              httpOnly = true,
+              secure = secureCookies,
+              sameSite = Some(SameSite.Lax),
             ),
-          )
-        case false =>
-          TooManyRequests("Too many pending OAuth login attempts. Please try again shortly.")
+          ),
+        )
       }
 
     case req @ GET -> Root / "auth" / "callback" :? CodeQueryParamMatcher(
@@ -125,7 +94,7 @@ class AuthRoutes(
           state,
         ) =>
       val flow = for {
-        validState <- consumeOAuthState(req, state)
+        validState <- IO.delay(validateOAuthState(req, state))
         _ <- IO.raiseUnless(validState)(new InvalidOAuthStateException)
         _ <- IO.println("Received auth callback")
         tokenResponse <- twitchApi.exchangeCode(code, redirectUri)

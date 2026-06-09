@@ -49,6 +49,8 @@ object AppWiring {
 
     val pushActionTokens =
       new PushActionTokenService(config.pushActionTokenSecret, settings.pushActionTokenTtl)
+    val oauthStateTokens =
+      new OAuthStateTokenService(config.oauthStateSecret, settings.oauthStateTtl)
 
     val pushServiceIO: IO[Option[PushNotificationService]] = {
       val keyIO = sys.env.get("FCM_SERVICE_ACCOUNT_JSON") match {
@@ -91,7 +93,6 @@ object AppWiring {
     for {
       _ <- db.Schema.initDb(xa, config.dialect)
       _ <- sessionRepo.encryptPlaintextTokens
-      pendingOAuthStates <- IO.ref(Map.empty[String, java.time.Instant])
       notificationQueues <- IO.ref(Map.empty[String, (String, Queue[IO, StreamNotification])])
       pushService <- pushServiceIO
       twitchApi = new TwitchApiClient(
@@ -108,9 +109,7 @@ object AppWiring {
       authRoutes = new routes.AuthRoutes(
         clientId = config.clientId,
         emailService = emailService,
-        maxPendingOAuthStates = settings.maxPendingOAuthStates,
-        oauthStateTtl = settings.oauthStateTtl,
-        pendingOAuthStates = pendingOAuthStates,
+        oauthStateTokens = oauthStateTokens,
         redirectUri = config.redirectUri,
         sessionRepo = sessionRepo,
         sessionTtl = settings.sessionTtl,

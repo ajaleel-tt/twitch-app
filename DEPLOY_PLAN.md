@@ -88,8 +88,7 @@ The Twitch Stream Notifier is a working local app (Scala 3 / Http4s / Scala.js /
 - Make `secure` conditional: off for `http://localhost` dev, on when `BASE_URL` starts with `https`
 
 **OAuth state parameter:**
-- Already implemented (Routes.scala lines 46-50, using `pendingOAuthStates` Ref) ✓
-- Note: the `pendingOAuthStates` Ref is in-memory. Once sessions move to Postgres (Step 3), consider whether pending states should also be persisted, or if their short lifespan (seconds) makes in-memory acceptable. For single-instance deploy, in-memory is fine.
+- Implemented as a signed, expiring state token plus browser-bound `oauth_state` cookie. This keeps CSRF binding without an in-memory pending-state map.
 
 ---
 
@@ -205,7 +204,7 @@ paths:
 
 **Initial deployment is single-instance.** This is important because:
 - The `StreamPoller` runs inside the app process (TwitchServer.scala line 65). Every instance would create its own poller, multiplying Twitch API calls. For a single-instance deploy, this is fine.
-- In-memory structures (`pendingOAuthStates`, `notificationQueues`) are not shared across instances
+- In-memory structures (`notificationQueues`) are not shared across instances
 - If horizontal scaling is needed later, the poller should be extracted to a separate process or use a leader-election mechanism, and notification delivery should use a pub-sub system (e.g., Redis, Postgres LISTEN/NOTIFY)
 
 **Steps:**
