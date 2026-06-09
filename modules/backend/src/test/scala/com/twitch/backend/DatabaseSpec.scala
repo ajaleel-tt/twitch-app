@@ -1,14 +1,20 @@
 package com.twitch.backend
 
+import java.time.Instant
+import scala.concurrent.duration.*
+
 import cats.effect.*
+import doobie.Transactor
 import doobie.h2.H2Transactor
 import munit.CatsEffectSuite
 
+import com.twitch.backend.auth.SessionTokenCipher
 import com.twitch.core.*
 
 class DatabaseSpec extends CatsEffectSuite {
 
   case class Repos(
+    xa: Transactor[IO],
     followRepo: db.FollowRepository,
     tagFilterRepo: db.TagFilterRepository,
     userRepo: db.UserRepository,
@@ -28,6 +34,7 @@ class DatabaseSpec extends CatsEffectSuite {
       )
       _ <- Resource.eval(db.Schema.initDb(xa, SqlDialect.H2))
     } yield Repos(
+      xa,
       new db.FollowRepository(xa, SqlDialect.H2),
       new db.TagFilterRepository(xa, SqlDialect.H2),
       new db.UserRepository(xa),
@@ -215,6 +222,41 @@ class DatabaseSpec extends CatsEffectSuite {
     } yield {
       assert(result.contains("fanout6"))
       assertEquals(result.count(_ == "fanout6"), 1)
+    }
+  }
+
+  // ── Session repository tests ───────────────────────────────────────
+
+  private val sessionUser = TwitchUser(
+    id = "session-user",
+    login = "sessionlogin",
+    display_name = "Session User",
+    profile_image_url = "https://example.com/session.png",
+  )
+
+  test("getSession returns None and deletes the row when token decryption fails") {
+    val oldCipher = SessionTokenCipher.fromSecret("old-session-secret")
+    val newCipher = SessionTokenCipher.fromSecret("new-session-secret")
+    val oldRepo = new db.SessionRepository(repos.xa, oldCipher)
+    val newRepo = new db.SessionRepository(repos.xa, newCipher)
+    val sessionId = java.util.UUID.randomUUID().toString
+    val now = Instant.now()
+
+    for {
+      _ <- oldRepo.createSession(
+        sessionId,
+        sessionUser,
+        "access-token",
+        Some("refresh-token"),
+        Some(now.plusSeconds(3600)),
+        now.plusSeconds(30.days.toSeconds),
+        now,
+      )
+      readWithWrongKey <- newRepo.getSession(sessionId)
+      readAfterDelete <- oldRepo.getSession(sessionId)
+    } yield {
+      assertEquals(readWithWrongKey, None)
+      assertEquals(readAfterDelete, None)
     }
   }
 

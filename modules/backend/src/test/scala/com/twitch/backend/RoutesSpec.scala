@@ -267,8 +267,15 @@ class RoutesSpec extends CatsEffectSuite {
       assert(location.contains("client_id=test-client-id"))
       assert(pendingStates.size == 1, "Expected one pending OAuth state")
       assert(
-        resp.cookies.exists(_.name == "oauth_state"),
-        "Expected browser-bound OAuth state cookie",
+        resp
+          .cookies
+          .exists(cookie =>
+            cookie.name == "oauth_state" &&
+              cookie.httpOnly &&
+              cookie.path.contains("/auth") &&
+              cookie.sameSite.contains(SameSite.Lax),
+          ),
+        "Expected browser-bound OAuth state cookie with HttpOnly, SameSite=Lax, and /auth path",
       )
     }
   }
@@ -306,7 +313,15 @@ class RoutesSpec extends CatsEffectSuite {
       sessionRow <- setCookie.traverse(c => env.sessionRepo.getSession(c.content))
     } yield {
       assertEquals(callbackResp.status, Status.Found)
-      assert(setCookie.isDefined, "Expected session_id cookie")
+      assert(
+        setCookie.exists(cookie =>
+          cookie.httpOnly &&
+            cookie.path.contains("/") &&
+            cookie.sameSite.contains(SameSite.Lax) &&
+            !cookie.secure,
+        ),
+        "Expected local session_id cookie with HttpOnly, SameSite=Lax, / path, and secure=false",
+      )
       assert(
         clearedOAuthState.exists(_.path.contains("/auth")),
         "Expected OAuth state cookie to be cleared on the same path where it was set",

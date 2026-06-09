@@ -31,6 +31,7 @@ RUN mkdir -p /app/static/icons && \
     cp modules/frontend/target/scala-3.6.3/frontend-opt/main.js /app/static/main.js && \
     cp modules/frontend/dist/output.css /app/static/output.css && \
     cp modules/frontend/manifest.json /app/static/manifest.json && \
+    cp modules/frontend/register-sw.js /app/static/register-sw.js && \
     cp modules/frontend/sw.js /app/static/sw.js && \
     cp modules/frontend/icons/icon.svg /app/static/icons/icon.svg && \
     sed -e 's|target/scala-3.6.3/frontend-fastopt/main.js|main.js|' -e 's|dist/output.css|output.css|' modules/frontend/index.html > /app/static/index.html

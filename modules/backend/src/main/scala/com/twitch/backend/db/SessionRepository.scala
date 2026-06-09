@@ -41,7 +41,13 @@ class SessionRepository(
     sql"""
       SELECT session_id, user_id, user_login, display_name, profile_image_url, access_token, refresh_token, token_expires_at, created_at, expires_at
       FROM sessions WHERE session_id = $sessionId
-    """.query[SessionRow].option.transact(xa).flatMap(_.traverse(decryptRow))
+    """.query[SessionRow].option.transact(xa).flatMap {
+      case Some(row) =>
+        decryptRow(row)
+          .map(Some(_))
+          .handleErrorWith(_ => deleteSession(sessionId).as(None))
+      case None => IO.pure(None)
+    }
 
   def updateSessionToken(
     sessionId: String,

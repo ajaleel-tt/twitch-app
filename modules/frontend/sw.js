@@ -4,6 +4,7 @@ const CACHE_NAME = `twitch-tracker-${CACHE_VERSION}`;
 const PRECACHE_URLS = [
   '/',
   '/manifest.json',
+  '/register-sw.js',
   '/icons/icon.svg'
 ];
 

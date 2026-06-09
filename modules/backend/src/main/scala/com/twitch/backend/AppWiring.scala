@@ -7,7 +7,6 @@ import org.http4s.*
 import org.http4s.client.Client
 import org.http4s.dsl.io.*
 import org.http4s.server.Router
-import org.http4s.server.middleware.CORS
 import org.http4s.server.staticcontent.*
 
 import com.twitch.backend.auth.SessionTokenCipher
@@ -144,7 +143,7 @@ object AppWiring {
         },
         "/" -> frontendService,
       ).orNotFound
-      corsApp = CORS.policy.withAllowOriginAll(httpApp)
+      securedApp = SecurityHeaders(httpApp, hsts = config.baseUrl.startsWith("https://"))
       poller <- StreamPoller.make(
         client = client,
         clientId = config.clientId,
@@ -164,7 +163,7 @@ object AppWiring {
         settings = settings,
         topGamesRepo = topGamesRepo,
       )
-    } yield App(corsApp, poller, topGamesPoller)
+    } yield App(securedApp, poller, topGamesPoller)
   }
 
 }
