@@ -1,4 +1,4 @@
-const CACHE_VERSION = 'v3';
+const CACHE_VERSION = 'v4';
 const CACHE_NAME = `twitch-tracker-${CACHE_VERSION}`;
 
 const PRECACHE_URLS = [
@@ -127,6 +127,11 @@ self.addEventListener('notificationclick', (event) => {
 // Fetch: route requests to cache or network
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
+
+  // Only handle same-origin requests. Cross-origin resources like Twitch CDN
+  // images must load directly via the browser's img-src policy; fetching them
+  // here is governed by connect-src and breaks under a self-only policy.
+  if (url.origin !== self.location.origin) return;
 
   // Never persist private auth/API responses in CacheStorage.
   if (url.pathname.startsWith('/api/') || url.pathname.startsWith('/auth/')) {

@@ -27,6 +27,9 @@ class SecurityHeadersSpec extends CatsEffectSuite {
       assert(
         headerValue(resp, "Content-Security-Policy").exists(_.contains("frame-ancestors 'none'")),
       )
+      assert(
+        headerValue(resp, "Content-Security-Policy").exists(_.contains("connect-src 'self' data:")),
+      )
       assertEquals(headerValue(resp, "Strict-Transport-Security"), None)
     }
   }

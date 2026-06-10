@@ -7,6 +7,8 @@ import org.typelevel.ci.CIStringSyntax
 
 object SecurityHeaders {
 
+  // http4s-dom probes request-stream support with a fetch("data:...") call.
+  // Allowing data: in connect-src keeps that local probe quiet without adding an external sink.
   private val ContentSecurityPolicy =
     "default-src 'self'; " +
       "base-uri 'self'; " +
@@ -15,7 +17,7 @@ object SecurityHeaders {
       "img-src 'self' https: data:; " +
       "script-src 'self'; " +
       "style-src 'self'; " +
-      "connect-src 'self'; " +
+      "connect-src 'self' data:; " +
       "manifest-src 'self'; " +
       "worker-src 'self'"
 
